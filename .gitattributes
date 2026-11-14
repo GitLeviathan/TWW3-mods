@@ -1,0 +1,5 @@
+/changeling-teleport/pack/db/** binary
+/changeling-teleport/pack/text/** binary
+/changeling-teleport/pack/ui/skins/** binary
+/changeling-teleport/pack/ui/templates/*.twui.xml -text whitespace=cr-at-eol
+/changeling-teleport/pack/script/**/*.lua text eol=crlf whitespace=-blank-at-eof
