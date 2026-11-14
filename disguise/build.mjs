@@ -59,24 +59,36 @@ function addPanelButtons(layout) {
     throw new Error('The installed TalkHammer no longer matches the panel button layout');
   }
   const links = [], components = [];
+  function clone(text, sourceId, id) {
+    return text.replaceAll(sourceId, id)
+      .replace(/[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{16}/g, (guid) => {
+        const hex = createHash('sha256').update(id + guid).digest('hex').slice(0, 32).toUpperCase();
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16)}`;
+      });
+  }
   for (const [id, x, width] of [
     ['th_mask_toggle', 20, 196],
     ['th_mask_explain', 368, 178],
     ['th_mask_withdraw', 554, 178],
     ['th_mask_insist', 740, 188],
   ]) {
-    function clone(text) {
-      return text.replaceAll('th_accept', id)
-        .replace(/[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{16}/g, (guid) => {
-          const hex = createHash('sha256').update(id + guid).digest('hex').slice(0, 32).toUpperCase();
-          return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16)}`;
-        });
-    }
-    links.push(clone(hierarchy[0]));
-    components.push(clone(definitions[0])
+    links.push(clone(hierarchy[0], 'th_accept', id));
+    components.push(clone(definitions[0], 'th_accept', id)
       .replace('offset="368.00,454.00"', `offset="${x}.00,454.00"`)
       .replaceAll('width="560"', `width="${width}"`));
   }
+  const titleLink = layout.match(/<th_title this="[^"]+"\s*\/>/g);
+  const title = layout.match(/<th_title\r?\n[^>]*>[\s\S]*?<\/th_title>/g);
+  if (titleLink?.length !== 1 || title?.length !== 1 || !title[0].includes('offset="128.00,8.00"')
+      || !title[0].includes('width="466"') || !title[0].includes('height="30"')) {
+    throw new Error('The installed TalkHammer no longer matches the panel title layout');
+  }
+  links.push(clone(titleLink[0], 'th_title', 'th_mask_speaker'));
+  components.push(clone(title[0], 'th_title', 'th_mask_speaker')
+    .replace('offset="128.00,8.00"', 'offset="20.00,426.00"')
+    .replace('width="466"', 'width="1060"')
+    .replace('height="30"', 'height="26"')
+    .replace('textyoffset="6.00,6.00"', 'textyoffset="3.00,3.00"'));
   return layout.replace(hierarchy[0], [hierarchy[0], ...links].join('\r\n\t\t\t\t'))
     .replace(definitions[0], [definitions[0], ...components].join('\r\n\t\t'));
 }

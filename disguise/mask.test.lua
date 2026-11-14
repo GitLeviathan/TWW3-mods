@@ -12,7 +12,7 @@ local panel_visible = false
 local ledger_ok = true
 local ui_sub, ui_ledger, ui_deal, ui_accept, ui_portrait, ui_attitude, ui_lines
 local buttons = {}
-for _, id in ipairs({ "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist" }) do
+for _, id in ipairs({ "th_mask_speaker", "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist" }) do
     buttons[id] = {
         SetVisible = function(self, value) self.visible = value end,
         SetStateText = function(self, value) self.text = value end,
@@ -708,6 +708,8 @@ ruler.tick()
 assert(native_draws == 0 and ui_portrait == "gelt-portrait" and ui_sub:find(owner, 1, true),
     "Opening a masked audience used the ordinary conversation view")
 assert(ui_attitude:find("-60", 1, true), "The portrait header omitted the attitude toward the masked faction")
+assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: " .. owner,
+    "The composer did not name the active speaker")
 ruler.show_conversation("bystander")
 assert(native_draws == 0 and not ui_accept, "An old ordinary reply replaced the active masked court")
 ruler.press_accept()
@@ -726,6 +728,8 @@ assert(ui_lines:find("Legacy conversation", 1, true), "The panel dropped the old
 change_form("ksl_katarin", "kislev")
 ruler.tick()
 assert(not ui_lines:find("Masked greeting.", 1, true), "Switching masks exposed another mask's conversation")
+assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: kislev",
+    "The composer kept the previous speaker after changing masks")
 
 local function click(button)
     dispatch("ComponentLClickUp", "th_mask_" .. button)
@@ -735,10 +739,12 @@ assert(buttons.th_mask_toggle.visible and buttons.th_mask_toggle.text:find("вк
 click("toggle")
 assert(native_draws == 1 and ui_accept == "ACCEPT" and buttons.th_mask_toggle.visible
     and buttons.th_mask_toggle.text:find("выкл", 1, true), "The toggle did not restore ordinary conversation")
+assert(not buttons.th_mask_speaker.visible, "Ordinary diplomacy kept the mask speaker visible")
 ruler.press_accept()
 assert(native_accepts == 1)
 click("toggle")
 assert(native_draws == 1 and not ui_accept and buttons.th_mask_toggle.text:find("вкл", 1, true))
+assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: kislev")
 
 prepare_peace_reversal("gelt")
 ruler.tick()

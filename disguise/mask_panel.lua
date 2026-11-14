@@ -11,6 +11,7 @@ function panel.new(deps)
     if not ui or not ui.show_history then return end
     local u8 = deps.u8 or TALKHAMMER_U8
     local components, shown, root = {}, {}
+    local speaker
     local view = {}
 
     function view.ready()
@@ -39,7 +40,16 @@ function panel.new(deps)
         if ok then shown[mode] = label end
     end
 
-    function view.controls(available, enabled, decision)
+    local function set_speaker(identity)
+        if not speaker then return end
+        pcall(function()
+            if identity then speaker:SetStateText("Говоришь от имени: " .. identity) end
+            speaker:SetVisible(identity ~= nil)
+        end)
+    end
+
+    function view.controls(available, enabled, decision, identity)
+        set_speaker(identity)
         set_button("toggle", available and (enabled and "Маска: вкл." or "Маска: выкл.") or nil)
         set_button("explain", decision == "check" and buttons.explain[2] or nil)
         set_button("withdraw", decision and (decision == "check" and buttons.withdraw[2] or "Отказаться") or nil)
@@ -68,8 +78,10 @@ function panel.new(deps)
         local result = original_init(...)
         if root ~= ui.panel then
             root, components = ui.panel, {}
+            speaker = nil
             if root and ui.deep_find then
                 for mode, button in pairs(buttons) do components[mode] = ui.deep_find(root, button[1]) end
+                speaker = ui.deep_find(root, "th_mask_speaker")
             end
             view.controls(false)
         end
@@ -78,7 +90,10 @@ function panel.new(deps)
     if original_clear then
         ui.clear_ledger = function(...)
             local result = original_clear(...)
-            if ui.mode ~= "talk" then set_button("toggle") end
+            if ui.mode ~= "talk" then
+                set_button("toggle")
+                set_speaker()
+            end
             set_button("explain")
             set_button("withdraw")
             set_button("insist")
@@ -146,7 +161,7 @@ function panel.new(deps)
         if ui.set_deal then ui.set_deal(deal) end
         local ledger_shown
         if has_ledger then ledger_shown = ui.set_ledger(table.concat(data.detail, "\n")) end
-        view.controls(true, true, data.pending and (data.pending.checking and "check" or "confirm"))
+        view.controls(true, true, data.pending and (data.pending.checking and "check" or "confirm"), data.identity)
         local visible = history_shown == true and view.visible()
         return visible, visible and (not has_ledger or ledger_shown == true)
     end
