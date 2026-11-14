@@ -1,7 +1,7 @@
 local addon, exposure, panel = ...
-if type(addon) ~= "table" then addon = dofile("disguise/mask.lua") end
-if type(exposure) ~= "table" then exposure = dofile("disguise/mask_exposure.lua") end
-if type(panel) ~= "table" then panel = dofile("disguise/mask_panel.lua") end
+if type(addon) ~= "table" then addon = dofile("changeling-diplomacy/mask.lua") end
+if type(exposure) ~= "table" then exposure = dofile("changeling-diplomacy/mask_exposure.lua") end
+if type(panel) ~= "table" then panel = dofile("changeling-diplomacy/mask_panel.lua") end
 local player = "wh3_dlc24_tze_the_deceivers"
 local form, owner, is_leader = "emp_karl_franz", "reikland", true
 local turn, queued, applied, last, ordinary = 7, nil, nil, nil, 0

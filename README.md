@@ -1,5 +1,4 @@
-# TalkHammer: True Changeling Roleplay
+# Моды для Перевёртыша в Total War: WARHAMMER III
 
-Сабмод для [TalkHammer](https://steamcommunity.com/sharedfiles/filedetails/?id=3808547073). Позволяет Перевёртышу вести переговоры от лица фракции выбранного облика.
-
-[Установка и игровые механики](disguise/README.md)
+- [Дальний прыжок](changeling-teleport/README.md) добавляет армиям Обманщиков прыжок к выбранному поселению на карте кампании.
+- [TalkHammer: True Changeling Roleplay](changeling-diplomacy/README.md) позволяет Перевёртышу вести переговоры от лица фракции выбранного облика.
