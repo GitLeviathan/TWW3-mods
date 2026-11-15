@@ -1,0 +1,68 @@
+<changeling_cult_target_count
+    this="E90E763D-6E98-46E6-9F62BB427DD51FA8"
+    id="changeling_cult_target_count"
+    offset="22.00,1.00"
+    visible="false"
+    allowhorizontalresize="false"
+    allowverticalresize="false"
+    tooltipslocalised="false"
+    uniqueguid="E90E763D-6E98-46E6-9F62BB427DD51FA8"
+    currentstate="6B41B5CC-628D-490C-B2EDA0B88F1395D2"
+    defaultstate="6B41B5CC-628D-490C-B2EDA0B88F1395D2">
+    <callbackwithcontextlist>
+        <callback_with_context
+            callback_id="ContextTextLabel"
+            context_object_id="CcoCampaignSettlement"
+            context_function_id="ScriptObjectContext(&quot;changeling_cult_tracker_count_&quot; + RegionRecordKey).StringValue">
+            <child_m_user_properties>
+                <property name="event0" value="ScriptObjectValueUpdated"/>
+            </child_m_user_properties>
+        </callback_with_context>
+        <callback_with_context
+            callback_id="ContextVisibilitySetter"
+            context_object_id="CcoCampaignSettlement"
+            context_function_id="PlayersFaction.FactionRecordContext.Key == &quot;wh3_dlc24_tze_the_deceivers&quot; &amp;&amp; ScriptObjectContext(&quot;changeling_cult_tracker_count_&quot; + RegionRecordKey).StringValue != &quot;&quot;">
+            <child_m_user_properties>
+                <property name="event0" value="ScriptObjectValueUpdated"/>
+            </child_m_user_properties>
+        </callback_with_context>
+        <callback_with_context
+            callback_id="ContextTooltipSetter"
+            context_object_id="CcoCampaignSettlement"
+            context_function_id="ScriptObjectContext(&quot;changeling_cult_tracker_tooltip_&quot; + RegionRecordKey).StringValue">
+            <child_m_user_properties>
+                <property name="event0" value="ScriptObjectValueUpdated"/>
+            </child_m_user_properties>
+        </callback_with_context>
+    </callbackwithcontextlist>
+    <componentimages>
+        <component_image
+            this="DB5BD96D-D190-4AB7-8F4808A6562503DC"
+            uniqueguid="DB5BD96D-D190-4AB7-8F4808A6562503DC"
+            imagepath="ui/skins/default/button_round_small_active.png"/>
+    </componentimages>
+    <states>
+        <default
+            this="6B41B5CC-628D-490C-B2EDA0B88F1395D2"
+            name="default"
+            width="19"
+            height="19"
+            interactive="true"
+            uniqueguid="6B41B5CC-628D-490C-B2EDA0B88F1395D2">
+            <imagemetrics>
+                <image
+                    this="7BE543B7-A27A-47DC-9704E6F162F70DD2"
+                    uniqueguid="7BE543B7-A27A-47DC-9704E6F162F70DD2"
+                    componentimage="DB5BD96D-D190-4AB7-8F4808A6562503DC"
+                    width="19"
+                    height="19"/>
+            </imagemetrics>
+            <component_text
+                texthalign="Center"
+                textvalign="Center"
+                font_m_size="12"
+                font_m_colour="#FFF0ACFF"
+                fontcat_name="body_12"/>
+        </default>
+    </states>
+</changeling_cult_target_count>
