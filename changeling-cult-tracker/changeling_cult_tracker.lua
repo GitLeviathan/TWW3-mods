@@ -2,7 +2,8 @@ local faction_key = "wh3_dlc24_tze_the_deceivers"
 local cult_template = "wh3_dlc24_tze_cult_changeling"
 local expansion_bonus = "the_changeling_cult_adjacent_region_expansion_chance"
 local prefix = "changeling_cult_tracker_"
-local published = {}
+local published_regions = {}
+local published_provinces = {}
 local refresh_queued = false
 
 local function settlement_name(region)
@@ -24,25 +25,66 @@ local function expansion_targets(region)
         local owner = neighbor:owning_faction()
         if not neighbor:is_abandoned() and not owner:is_null_interface() and owner:name() ~= faction_key
             and neighbor:foreign_slot_manager_for_faction(faction_key):is_null_interface() then
-            targets[#targets + 1] = settlement_name(neighbor)
+            targets[#targets + 1] = {key = neighbor:name(), name = settlement_name(neighbor)}
         end
     end
     return targets
 end
 
-local function publish(region_key, count, tooltip)
-    local previous = published[region_key]
-    if not previous or previous.tooltip ~= tooltip then
-        common.set_context_value(prefix .. "tooltip_" .. region_key, tooltip)
+local function publish(scope, previous, current)
+    local context_prefix = prefix .. scope
+    for key, item in pairs(current) do
+        local old = previous[key]
+        if not old or old.tooltip ~= item.tooltip then
+            common.set_context_value(context_prefix .. "tooltip_" .. key, item.tooltip)
+        end
+        if not old or old.count ~= item.count then
+            common.set_context_value(context_prefix .. "count_" .. key, item.count)
+        end
     end
-    if not previous or previous.count ~= count then
-        common.set_context_value(prefix .. "count_" .. region_key, count)
+    for key in pairs(previous) do
+        if not current[key] then
+            common.set_context_value(context_prefix .. "tooltip_" .. key, "")
+            common.set_context_value(context_prefix .. "count_" .. key, "")
+        end
     end
+end
+
+local function add_to_province(provinces, region, targets, chance)
+    local key = region:province_name()
+    local province = provinces[key]
+    if not province then
+        province = {targets = {}, cults = {}}
+        provinces[key] = province
+    end
+    for _, target in ipairs(targets) do
+        province.targets[target.key] = target.name
+    end
+    province.cults[#province.cults + 1] = settlement_name(region) .. " (" .. tostring(chance) .. "%)"
+end
+
+local function province_badges(provinces)
+    local badges = {}
+    for key, province in pairs(provinces) do
+        local names = {}
+        for _, name in pairs(province.targets) do names[#names + 1] = name end
+        table.sort(names)
+        table.sort(province.cults)
+        local count = tostring(#names)
+        badges[key] = {
+            count = count,
+            tooltip = "Доступно для распространения из этой провинции: " .. count
+                .. "\n• " .. table.concat(names, "\n• ")
+                .. "\n\nШанс распространения в начале хода по культам:"
+                .. "\n• " .. table.concat(province.cults, "\n• "),
+        }
+    end
+    return badges
 end
 
 local function refresh()
     if cm:get_local_faction_name(true) ~= faction_key then return end
-    local current = {}
+    local regions, provinces = {}, {}
     local managers = cm:get_faction(faction_key):foreign_slot_managers()
     for index = 0, managers:num_items() - 1 do
         local manager = managers:item_at(index)
@@ -54,21 +96,23 @@ local function refresh()
                 local key = region:name()
                 local count = tostring(#targets)
                 local chance = cm:get_regions_bonus_value(region, expansion_bonus)
+                local names = {}
+                for _, target in ipairs(targets) do names[#names + 1] = target.name end
                 local tooltip = "Доступно для распространения культа: " .. count
-                    .. "\n• " .. table.concat(targets, "\n• ")
+                    .. "\n• " .. table.concat(names, "\n• ")
                     .. "\n\nШанс распространения в начале хода: " .. tostring(chance) .. "%"
                 if chance <= 0 then
                     tooltip = tooltip .. "\nБонус к распространению сейчас не действует."
                 end
-                publish(key, count, tooltip)
-                current[key] = {count = count, tooltip = tooltip}
+                regions[key] = {count = count, tooltip = tooltip}
+                add_to_province(provinces, region, targets, chance)
             end
         end
     end
-    for key in pairs(published) do
-        if not current[key] then publish(key, "", "") end
-    end
-    published = current
+    local province_entries = province_badges(provinces)
+    publish("", published_regions, regions)
+    publish("province_", published_provinces, province_entries)
+    published_regions, published_provinces = regions, province_entries
 end
 
 local function queue_refresh()
