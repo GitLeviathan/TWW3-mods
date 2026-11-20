@@ -2,6 +2,13 @@
 local models = __MODEL_MAP__
 local current_key, current_page
 local function log(text) if out then out('MASK_PREVIEW|' .. text) end end
+local function describe(label, component)
+    local x,y=component:Position()
+    local width,height=component:Dimensions()
+    log(label .. '|id=' .. component:Id() .. '|position=' .. tostring(x) .. ',' .. tostring(y)
+        .. '|size=' .. tostring(width) .. ',' .. tostring(height)
+        .. '|visible=' .. tostring(component:Visible()) .. '|children=' .. tostring(component:ChildCount()))
+end
 local function update()
     local root = core:get_ui_root()
     local page = find_uicomponent(root, 'mask_model_page')
@@ -36,16 +43,30 @@ local function update()
         return
     end
     local ok, created = pcall(function()
-        return holder:CreateComponent('mask_current_model', layout)
+        local address = holder:CreateComponent('mask_current_model', layout)
+        assert(address, 'CreateComponent returned no address')
+        local scene = UIComponent(address)
+        local viewport = find_uicomponent(scene, 'mask_model_renderer')
+        describe('holder',holder)
+        describe('scene-before',scene)
+        assert(viewport, 'Created layout has no mask_model_renderer child')
+        describe('viewport-before',viewport)
+        -- MoveTo uses screen coordinates. A dynamically-created root is not
+        -- guaranteed to start at its parent's current position.
+        scene:MoveTo(holder:Position())
+        describe('scene-after',scene)
+        describe('viewport-after',viewport)
+        return address
     end)
     if notice then
         notice:SetVisible(not (ok and created))
         if not ok or not created then notice:SetText('Не удалось загрузить модель формы') end
     end
     log((ok and created and 'loaded|' or 'failed|') .. tostring(key) .. '|' .. tostring(layout))
+    if not ok then log('create-error|' .. tostring(created)) end
 end
 cm:add_first_tick_callback(function()
-    log('direct battle asset loader v3')
+    log('direct battle asset loader v4 bounds diagnostics')
     cm:repeat_real_callback(function()
         local ok, err = pcall(update)
         if not ok then
