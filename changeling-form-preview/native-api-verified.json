@@ -1,0 +1,9 @@
+{
+  "source": "script\\_lib\\lib_campaign_manager.lua",
+  "used": [
+    "add_first_tick_callback",
+    "repeat_real_callback",
+    "real_callback"
+  ],
+  "verified": true
+}
