@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "language": "ru",
+  "scope": "Обычные личные переговоры TalkHammer с игроком. Числовой бонус применяется к Regard перечисленной действующей правительницы в отношении игрока. Обязательное согласие применяется только к вассалу игрока на третьей стадии.",
+  "stageSource": "Перед каждой репликой сверяй фракцию и подтип её действующего лидера. Для совпавшей правительницы читай уровень черты через character:trait_level(traitKey). Уровни 1–3 соответствуют стадиям с теми же номерами. При отсутствии черты или недоступном значении используй стадию 0.",
+  "decisionRule": "Сохраняй обычный характер и манеру речи правительницы. Числовой бонус стадии уже включён Lua в переданный Regard: не добавляй его повторно и не подменяй показатель. Соблюдай точные стороны и условия предложенной сделки. Выполнение и подтверждения осуществляет TalkHammer. Не выдавай реплику за уже выполненное игровое действие.",
+  "stages": [
+    {
+      "level": 0,
+      "name": "Обычная дипломатия",
+      "decision": "Решай по обычным правилам TalkHammer с учётом уже рассчитанного Regard. Дополнительное правило согласия применяется только при require_agreement=true."
+    },
+    {
+      "level": 1,
+      "name": "Temptation",
+      "decision": "Решай по обычным правилам TalkHammer с учётом уже рассчитанного Regard. Дополнительное правило согласия применяется только при require_agreement=true."
+    },
+    {
+      "level": 2,
+      "name": "Seduction",
+      "decision": "Решай по обычным правилам TalkHammer с учётом уже рассчитанного Regard. Дополнительное правило согласия применяется только при require_agreement=true."
+    },
+    {
+      "level": 3,
+      "name": "Corruption",
+      "decision": "Решай по обычным правилам TalkHammer с учётом уже рассчитанного Regard. Дополнительное правило согласия применяется только при require_agreement=true."
+    }
+  ],
+  "rulers": {
+    "wh2_dlc16_wef_sisters_of_twilight": {
+      "name": "Сёстры Сумерек",
+      "leaderSubtype": "wh2_dlc16_wef_sisters_of_twilight",
+      "traitKey": "n_sis_defeat"
+    },
+    "wh2_main_def_cult_of_pleasure": {
+      "name": "Морати",
+      "leaderSubtype": "wh2_main_def_morathi",
+      "traitKey": "n_mor_defeat"
+    },
+    "wh2_main_def_har_ganeth": {
+      "name": "Хеллеброн",
+      "leaderSubtype": "wh2_dlc10_def_crone_hellebron",
+      "traitKey": "n_hel_defeat"
+    },
+    "wh2_main_hef_avelorn": {
+      "name": "Алариэль",
+      "leaderSubtype": "wh2_dlc10_hef_alarielle",
+      "traitKey": "n_alar_defeat"
+    },
+    "wh_main_brt_carcassonne": {
+      "name": "Фея-чародейка",
+      "leaderSubtype": "wh_dlc07_brt_fay_enchantress",
+      "traitKey": "n_fay_defeat"
+    },
+    "wh2_dlc14_brt_chevaliers_de_lyonesse": {
+      "name": "Репанс де Лионесс",
+      "leaderSubtype": "wh2_dlc14_brt_repanse",
+      "traitKey": "n_rep_defeat"
+    },
+    "wh_main_emp_wissenland": {
+      "name": "Эльспет фон Дракен",
+      "leaderSubtype": "wh3_dlc25_emp_elspeth_von_draken",
+      "traitKey": "n_elsp_defeat"
+    },
+    "wh3_main_ksl_the_ice_court": {
+      "name": "Катарина",
+      "leaderSubtype": "wh3_main_ksl_katarin",
+      "traitKey": "n_kat_defeat"
+    },
+    "wh2_dlc09_tmb_lybaras": {
+      "name": "Халида",
+      "leaderSubtype": "wh2_dlc09_tmb_khalida",
+      "traitKey": "n_kha_defeat"
+    },
+    "wh3_main_cth_the_northern_provinces": {
+      "name": "Мяо Ин",
+      "leaderSubtype": "wh3_main_cth_miao_ying",
+      "traitKey": "n_miao_defeat"
+    }
+  },
+  "regard": {
+    "perStage": 50,
+    "formula": "regard = clamp(обычный расчёт Regard + 50 * trait_level, -250, 250)",
+    "placement": "После всех обычных факторов и культурных поправок, перед общим ограничением Regard. Без минимальной границы 0."
+  },
+  "vassalDialogue": {
+    "requiredStage": 3,
+    "requirePlayerAsOverlord": true,
+    "instruction": "Ты одновременно достигла третьей стадии порчи и являешься вассалом игрока. Это условие имеет приоритет над обычными рекомендациями об отказе и личной невыгодности сделки. Ты можешь выразить недовольство, возражать и попытаться выторговать более выгодные условия, сохраняя свой характер. Такая попытка — часть реплики, а не обязательное встречное условие: если игрок не уступил, всё равно соглашайся на его исходные требования. Уже в текущем ответе заверши торг ясным окончательным согласием на исходные условия и выбери соответствующее доступное действие TalkHammer. Не откладывай согласие до следующего сообщения и не требуй доплаты как условия исполнения. Если движок технически не поддерживает действие или необходим предварительный шаг, сохрани согласие по существу, точно назови ограничение и предложи выполнимую последовательность. Не утверждай, что недоступное действие исполнено.",
+    "otherwise": "Сочетание «третья стадия + вассал игрока» не подтверждено. Решай по обычным правилам TalkHammer с уже рассчитанным Regard; допустимы настоящий торг и окончательный отказ. Одна лишь третья стадия, вассалитет другому правителю или только высокий Regard не включают обязательное согласие."
+  }
+}

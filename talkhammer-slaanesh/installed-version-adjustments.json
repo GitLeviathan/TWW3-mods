@@ -1,0 +1,61 @@
+{
+  "sourceSha256": "be80b4e0d2f0366694b9a496fa3b9c097a3f37833c6f86451453b05a06a6b2c9",
+  "resultSha256": "380ae3127543ce31a47cee622e73248e5c72b080fa06ac26e76ebe34289b5467",
+  "changes": [
+    {
+      "start": 12923,
+      "end": 12967,
+      "new": "local function response_schema()\n"
+    },
+    {
+      "start": 22951,
+      "end": 23592,
+      "new": ""
+    },
+    {
+      "start": 52967,
+      "end": 53015,
+      "new": "response_format = response_schema(),\n"
+    },
+    {
+      "start": 201903,
+      "end": 202061,
+      "new": ""
+    },
+    {
+      "start": 202182,
+      "end": 202435,
+      "new": "if not (type(m) == \"table\" and m.kind == \"war\" and allied[m.against]) then\n"
+    },
+    {
+      "start": 222838,
+      "end": 223546,
+      "new": ""
+    },
+    {
+      "start": 273000,
+      "end": 273288,
+      "new": ""
+    },
+    {
+      "start": 274876,
+      "end": 275178,
+      "new": ""
+    },
+    {
+      "start": 317653,
+      "end": 317820,
+      "new": ""
+    },
+    {
+      "start": 322161,
+      "end": 322181,
+      "new": ""
+    },
+    {
+      "start": 337171,
+      "end": 337810,
+      "new": ""
+    }
+  ]
+}
