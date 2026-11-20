@@ -1,6 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
+
+const installedVersion = JSON.parse(await readFile(new URL('./installed-version-adjustments.json', import.meta.url), 'utf8'));
 
 const stockPath = 'D:/Steam/steamapps/workshop/content/1142710/3808547073/talkhammer.pack';
 const mainPath = 'script\\talkhammer\\main.lua';
@@ -40,7 +43,7 @@ function pack(entries) {
   header.write('PFH5');
   header.writeUInt32LE(3, 4); // Mod: selectable in the launcher
   header.writeUInt32LE(entries.length, 16);
-  header.writeUInt32LE(Math.floor(Date.now() / 1000), 24);
+  header.writeUInt32LE(installedVersion.packTimestamp, 24);
   const index = Buffer.concat(entries.map(([name, content]) => {
     const metadata = Buffer.alloc(5); // size and the uncompressed marker
     metadata.writeUInt32LE(content.length);
@@ -142,6 +145,15 @@ const entries = [
   [worldPath, Buffer.from(world.replace(leaderCache, '$1$2$3$1f.leader_subtype = subtype$3')
     .replace(tradeReader, nativeTradeReader), 'utf8')],
 ];
+// Retain the installed adapter's main-module version despite upstream updates.
+const mainOutput = entries.find(([name]) => name === mainPath);
+let pinnedMain = mainOutput[1].toString('utf8');
+assert.equal(createHash('sha256').update(pinnedMain).digest('hex'), installedVersion.sourceSha256, 'TalkHammer main module version changed');
+for (const change of installedVersion.changes.toReversed()) {
+  pinnedMain = pinnedMain.slice(0, change.start) + change.new + pinnedMain.slice(change.end);
+}
+assert.equal(createHash('sha256').update(pinnedMain).digest('hex'), installedVersion.resultSha256);
+mainOutput[1] = Buffer.from(pinnedMain);
 const result = pack(entries);
 const decoded = unpack(result);
 if (decoded.size !== entries.length || entries.some(([name, data]) => !decoded.get(name)?.content.equals(data))) {
