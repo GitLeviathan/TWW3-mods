@@ -3,3 +3,9 @@
 /changeling-teleport/pack/ui/skins/** binary
 /changeling-teleport/pack/ui/templates/*.twui.xml -text whitespace=cr-at-eol
 /changeling-teleport/pack/script/**/*.lua text eol=crlf whitespace=-blank-at-eof
+/tricksters-staff/staff-description.loc binary
+/changeling-diplomacy/*.lua text eol=crlf
+/changeling-cult-tracker/changeling_cult_tracker.lua text eol=lf
+/changeling-cult-tracker/badge.xml text eol=lf
+/talkhammer-slaanesh/slaanesh-policy.lua text eol=lf
+/changeling-form-preview/preview.lua text eol=lf

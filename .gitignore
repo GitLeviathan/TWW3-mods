@@ -2,3 +2,14 @@
 /changeling-teleport/*.pack
 /changeling-diplomacy/*.pack
 /changeling-cult-tracker/*.pack
+/talkhammer-slaanesh/*.pack
+/tricksters-staff/*.pack
+/changeling-form-preview/*.pack
+**/__pycache__/
+**/.build-cache/
+/changeling-form-preview/native_*.twui.xml
+/changeling-form-preview/dlc24_formless_horror.twui.xml
+/changeling-form-preview/native-animation-paths.json
+/changeling-form-preview/schema_wh3.ron
+/changeling-form-preview/preview.generated.lua
+/changeling-form-preview/verification.json

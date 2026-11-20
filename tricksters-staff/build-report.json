@@ -1,0 +1,80 @@
+{
+  "sha256": "7feaf5972ea7b1f33ffc771e94efaaae57f2300728e4901b65f452ff25a66640",
+  "actions": 9,
+  "excluded": "wh3_main_ritual_tze_cotw_reveal_shroud",
+  "descriptionPreserved": true,
+  "rows": [
+    {
+      "kind": "ritual",
+      "key": "wh3_dlc24_ritual_tze_cotw_the_changeling_spread_corruption",
+      "bonus": "cooldown_mod",
+      "base": 5,
+      "modifier": -4,
+      "result": 1
+    },
+    {
+      "kind": "ritual",
+      "key": "wh3_main_ritual_tze_cotw_track_army",
+      "bonus": "cooldown_mod",
+      "base": 5,
+      "modifier": -4,
+      "result": 1
+    },
+    {
+      "kind": "ritual",
+      "key": "wh3_main_ritual_tze_cotw_force_rebellion",
+      "bonus": "cooldown_mod",
+      "base": 5,
+      "modifier": -4,
+      "result": 1
+    },
+    {
+      "kind": "ritual",
+      "key": "wh3_main_ritual_tze_cotw_halt_faction",
+      "bonus": "cooldown_mod",
+      "base": 5,
+      "modifier": -4,
+      "result": 1
+    },
+    {
+      "kind": "ritual",
+      "key": "wh3_main_ritual_tze_cotw_open_gates",
+      "bonus": "cooldown_mod",
+      "base": 10,
+      "modifier": -9,
+      "result": 1
+    },
+    {
+      "kind": "diplomatic",
+      "key": "break_alliance",
+      "bonus": "cooldown_mod",
+      "base": 10,
+      "modifier": -9,
+      "result": 1
+    },
+    {
+      "kind": "diplomatic",
+      "key": "force_peace",
+      "bonus": "cooldown_mod",
+      "base": 5,
+      "modifier": -4,
+      "result": 1
+    },
+    {
+      "kind": "diplomatic",
+      "key": "transfer_settlement",
+      "bonus": "cooldown_mod",
+      "base": 10,
+      "modifier": -9,
+      "result": 1
+    },
+    {
+      "kind": "diplomatic",
+      "key": "force_war",
+      "bonus": "cooldown_mod",
+      "base": 10,
+      "modifier": -9,
+      "result": 1
+    }
+  ]
+}
