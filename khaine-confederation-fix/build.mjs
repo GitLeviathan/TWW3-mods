@@ -1,0 +1,13 @@
+import fs from 'node:fs';import crypto from 'node:crypto';import assert from 'node:assert/strict';
+import {readEntry,moviePack} from '../mod-tools/pack.mjs';
+const here=new URL('./',import.meta.url),data=process.argv[2]??'D:/Steam/steamapps/common/Total War WARHAMMER III/data';
+const native=readEntry(data+'/data_script.pack','script\\campaign\\wh2_dlc10_sword_of_khaine.lua');
+assert(native.toString('utf8').includes('function sword_of_khaine:correct_script_cache('));
+fs.mkdirSync(new URL('.build-cache/',here),{recursive:true});
+fs.writeFileSync(new URL('.build-cache/native.lua',here),native);
+const guard=fs.readFileSync(new URL('guard.lua',here));
+const pack=moviePack(new Map([['script\\campaign\\mod\\khaine_confederation_cache_fix.lua',guard]]));
+fs.writeFileSync(new URL('khaine_confederation_fix.pack',here),pack);
+const sha256=crypto.createHash('sha256').update(pack).digest('hex');
+fs.writeFileSync(new URL('verification.json',here),JSON.stringify({sha256,nativeSha256:crypto.createHash('sha256').update(native).digest('hex'),type:'Movie',inGameVerified:false},null,2)+'\n');
+console.log('Khaine cache guard SHA256 '+sha256);
