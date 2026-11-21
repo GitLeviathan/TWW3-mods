@@ -3,6 +3,9 @@ local gift_kind = "settlement_gift"
 local influence_kind = "vassal_confederation"
 local gift_words = { ["подарите"] = true, ["подарить"] = true, ["дарите"] = true,
     ["дарю"] = true, ["дарим"] = true, gift = true }
+local titles = { ["царица"] = true, ["ведьма"] = true, ["король"] = true, ["королева"] = true,
+    ["лорд"] = true, ["леди"] = true, ["император"] = true, ["герцог"] = true,
+    crone = true, tsarina = true, king = true, queen = true, lord = true, lady = true, emperor = true, duke = true }
 
 local function trim(text)
     return (text or ""):match("^%s*(.-)%s*$")
@@ -170,6 +173,31 @@ function gifts.install(deps)
         return found, donor
     end
 
+    local function labels_for(faction_key, faction, player)
+        local labels = { world.name_of(faction_key) }
+        local name = world.leader_name(faction_key)
+        if name and name ~= "" then
+            labels[#labels + 1] = name
+            local words = deps.words(name)
+            if #words > 1 then
+                -- A surname or a first name can identify a live ruler; the resolver still rejects collisions.
+                if not titles[words[1]] then labels[#labels + 1] = words[1] end
+                labels[#labels + 1] = words[#words]
+            end
+        end
+        local leader = faction:faction_leader()
+        if valid(leader) and leader:character_subtype_key() == "wh2_dlc10_def_crone_hellebron" then
+            labels[#labels + 1] = "Хелеброн"
+            labels[#labels + 1] = "Хеллеброн"
+            labels[#labels + 1] = "Hellebron"
+        end
+        if faction_key == player then
+            labels[#labels + 1] = "мне"
+            labels[#labels + 1] = "me"
+        end
+        return labels
+    end
+
     local function natural_order(key, text, player)
         if ruler.expansion_mask_active and ruler.expansion_mask_active() then return end
         local tokens, has_town = deps.natural.command(text, deps.words)
@@ -189,24 +217,7 @@ function gifts.install(deps)
                 seen[faction_key] = true
                 local faction = living_faction(faction_key)
                 if not faction then return end
-                local labels = { world.name_of(faction_key) }
-                local name = world.leader_name(faction_key)
-                if name and name ~= "" then
-                    labels[#labels + 1] = name
-                    local words = deps.words(name)
-                    if #words > 1 then labels[#labels + 1] = words[#words] end
-                end
-                local leader = faction:faction_leader()
-                if valid(leader) and leader:character_subtype_key() == "wh2_dlc10_def_crone_hellebron" then
-                    labels[#labels + 1] = "Хелеброн"
-                    labels[#labels + 1] = "Хеллеброн"
-                    labels[#labels + 1] = "Hellebron"
-                end
-                if faction_key == player then
-                    labels[#labels + 1] = "мне"
-                    labels[#labels + 1] = "me"
-                end
-                choices[#choices + 1] = { key = faction_key, labels = labels }
+                choices[#choices + 1] = { key = faction_key, labels = labels_for(faction_key, faction, player) }
             end
             add(player)
             for _, faction_key in ipairs(world.keys or {}) do add(faction_key) end
@@ -219,6 +230,132 @@ function gifts.install(deps)
             and tr("Which of my settlements should I give away? Name one.", "Какое из моих поселений передать? Укажи одно название.")
             or tr("Who should receive the settlement? Name one faction or ruler.", "Кому передать поселение? Назови одну фракцию или её правителя.")
         return nil, nil, why
+    end
+
+    local function direct()
+        return not (ruler.expansion_mask_active and ruler.expansion_mask_active())
+    end
+
+    local function named_resolvers()
+        local function named(raw, label)
+            if fold(raw) == fold(label) then return true end
+            local input, name = deps.words(raw), deps.words(label)
+            if #input ~= #name or #input == 0 then return false end
+            for i, word in ipairs(input) do
+                if word ~= name[i] and (not deps.stem or deps.stem(word) ~= deps.stem(name[i])) then return false end
+            end
+            return true
+        end
+        local function faction(raw, player, key)
+            raw = trim(raw)
+            if raw == "" then return end
+            if raw:match("^[%w_%-]+$") and living_faction(raw) then return raw end
+            local found, seen, ambiguous = nil, {}, false
+            local function visit(candidate)
+                if not candidate or seen[candidate] then return end
+                seen[candidate] = true
+                local entry = living_faction(candidate)
+                if not entry then return end
+                for _, label in ipairs(labels_for(candidate, entry, player)) do
+                    if named(raw, label) then
+                        ambiguous = found ~= nil
+                        found = candidate
+                        break
+                    end
+                end
+            end
+            visit(player)
+            visit(key)
+            for _, candidate in ipairs(world.keys or {}) do
+                visit(candidate)
+                if ambiguous then return end
+            end
+            if not ambiguous then return found end
+        end
+        local function region(raw, holder)
+            raw = trim(raw)
+            if raw == "" then return end
+            if raw:match("^[%w_%-]+$") then
+                local owner = owner_of(raw)
+                if owner and (not holder or holder == owner) then return raw end
+            end
+            local found, ambiguous
+            local function visit(candidate)
+                local entry = living_faction(candidate)
+                if not entry then return end
+                local regions = entry:region_list()
+                for i = 0, regions:num_items() - 1 do
+                    local region_key = regions:item_at(i):name()
+                    if named(raw, place_name(region_key)) and found ~= region_key then
+                        ambiguous = found ~= nil
+                        found = region_key
+                    end
+                    if ambiguous then return end
+                end
+            end
+            if holder then visit(holder)
+            else
+                for _, candidate in ipairs(world.keys or {}) do
+                    visit(candidate)
+                    if ambiguous then return end
+                end
+            end
+            if not ambiguous then return found end
+        end
+        return faction, region
+    end
+
+    local function occupied(key, turn)
+        return on_table(key, turn) or stock_table_action(key, turn)
+    end
+
+    local queued_reports
+    local function report(key, text)
+        if queued_reports then
+            queued_reports[#queued_reports + 1] = { key, text }
+            return
+        end
+        local turn = cm:turn_number()
+        for line in text:gmatch("[^\n]+") do state.remember(key, turn, line, "ruler") end
+        if ruler.news_add then ruler.news_add(turn, text, "audience", {key}, true) end
+        local ok, visible = pcall(deps.is_open)
+        if ok and visible and direct() then show(key) end
+    end
+    local resolve_named_faction, resolve_named_region = named_resolvers()
+    local api = { direct = direct, resolve_faction = resolve_named_faction, resolve_region = resolve_named_region,
+        tr = tr, live = living_faction, remember = note, report = report, ask = deps.ask_envoy,
+        place_name = place_name, owner_of = owner_of, occupied = occupied }
+    local negotiation = deps.negotiation and deps.negotiation.install(deps, api)
+    local council = deps.council and deps.council.install(deps, api)
+    local military = deps.military and deps.military.install(deps, api)
+    local services = { negotiation, council, military }
+
+    local function handle(key, text, player, turn)
+        if not direct() or type(text) ~= "string" then return false end
+        local ok, handled, line = true
+        queued_reports = {}
+        for _, service in ipairs(services) do
+            ok, handled, line = pcall(service.handle, key, text, player, turn)
+            if not ok or handled then break end
+        end
+        local buffered = queued_reports
+        queued_reports = nil
+        if not ok then error(handled) end
+        if not handled then return false end
+        state.remember(key, turn, text, "you")
+        if line then report(key, line) end
+        for _, entry in ipairs(buffered) do report(entry[1], entry[2]) end
+        return true
+    end
+
+    if deps.core and (council or military) then
+        deps.core:add_listener("TalkHammerDiplomacyExpansionPlayerTurn", "FactionTurnStart", function(context)
+            return context:faction():name() == cm:get_local_faction_name(true)
+        end, function(context)
+            local player, turn = context:faction():name(), cm:turn_number()
+            if council then council.start_turn(player, turn) end
+            if military then military.start_turn(player, turn) end
+        end, true)
     end
 
     local function prepare(key, text, player, turn, selection)
@@ -253,7 +390,7 @@ function gifts.install(deps)
         if key == player or not counterpart or counterpart:is_human() then
             return nil, tr("Choose an active AI counterpart.", "Выбери действующую фракцию ИИ.")
         end
-        if on_table(key, turn) or stock_table_action(key, turn) then
+        if occupied(key, turn) or (negotiation and negotiation.busy(key)) then
             return nil, tr("Resolve the offer on the table first.", "Сначала подтверди или отклони сделку на столе.")
         end
         local recipient = automatic and receiver or resolve_faction(receiver, player, key)
@@ -385,7 +522,7 @@ function gifts.install(deps)
         local agreed = decision[consent_field(gift)] == true
         if gift.kind == influence_kind and not agreed then influence.consent(gift, false) end
         if agreed and gift.automatic then
-            if on_table(key, gift.turn) or stock_table_action(key, gift.turn)
+            if occupied(key, gift.turn) or (negotiation and negotiation.busy(key))
                 or (ruler.counterpart == key and ruler.expansion_mask_active and ruler.expansion_mask_active()) then
                 note(key, tr("Repeat the request in direct conversation with no other offer on the table.",
                     "Повтори просьбу в прямом разговоре, когда на столе не будет другой сделки."))
@@ -418,7 +555,7 @@ function gifts.install(deps)
 
     ruler.table_action = function(key, turn)
         local gift = on_table(key, turn)
-        if not gift then return stock_table_action(key, turn) end
+        if not gift then return (negotiation and negotiation.card(key)) or stock_table_action(key, turn) end
         local confederation = gift.kind == influence_kind
         return {
             kind = gift.kind, expansion = true,
@@ -434,6 +571,13 @@ function gifts.install(deps)
     ruler.ledger_text = function(key, label, split)
         local text, card = stock_ledger(key, label, split)
         local gift = on_table(key)
+        local exchange = negotiation and negotiation.card(key)
+        if exchange then
+            local description = tr("Settlement exchange", "Обмен поселениями") .. "\n" .. exchange.what
+                .. "\n" .. tr("Confirm or /reject.", "Подтверди или введи /reject.")
+            if split then return text, description end
+            return description .. "\n\n" .. (text or ""), description
+        end
         if not gift then return text, card end
         local parties = world.name_of(gift.from) .. " → " .. world.name_of(gift.to)
         local body = gift.region and parties .. "\n" .. place_name(gift.region)
@@ -499,6 +643,9 @@ function gifts.install(deps)
     end
 
     ruler.settle = function(key, accept, me, confirmation)
+        if negotiation and (negotiation.card(key) or (confirmation and confirmation:match("^exchange|"))) then
+            return negotiation.settle(key, accept, confirmation)
+        end
         local gift = on_table(key)
         if not gift then
             if confirmation then return false, tr("That offer has expired.", "Это предложение уже снято.") end
@@ -514,7 +661,8 @@ function gifts.install(deps)
         return apply_deal(gift)
     end
 
-    return { prepare = prepare, prompt = prompt, schema = schema, finish = finish, title = title }
+    return { prepare = prepare, prompt = prompt, schema = schema, finish = finish, title = title, handle = handle,
+        context = function(key) return military and military.prompt(key) or "" end }
 end
 
 return gifts

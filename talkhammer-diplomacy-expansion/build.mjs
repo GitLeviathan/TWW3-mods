@@ -17,6 +17,12 @@ const source = readEntry(base, rulerPath).toString('utf8');
 const module = (await readFile(new URL('./settlement-gifts.lua', import.meta.url), 'utf8')).trimEnd();
 const influence = (await readFile(new URL('./vassal-influence.lua', import.meta.url), 'utf8')).trimEnd();
 const natural = (await readFile(new URL('./natural-gifts.lua', import.meta.url), 'utf8')).trimEnd();
+const services = await Promise.all([
+  ['negotiation', 'negotiation.lua'],
+  ['council', 'council-deadlines.lua'],
+  ['military', 'military-tasks.lua'],
+].map(async ([name, file]) =>
+  'local ' + name + ' = (function()\n' + (await readFile(new URL('./' + file, import.meta.url), 'utf8')).trimEnd() + '\nend)()'));
 const protectedOutput = (await readFile(new URL('./protected-output.lua', import.meta.url), 'utf8')).trimEnd();
 const picker = await readFile(new URL('./gift-panel.lua', import.meta.url));
 
@@ -36,7 +42,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.5")`);
+log("DIPLOMACY|Expansion test.6")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -70,7 +76,7 @@ let ask = ruler.slice(askStart, askEnd);
 ask = activate(ask, /^local function ask\(([^\r\n]+)\)$/m,
   (_line, args) => 'local diplomacy_expansion\nlocal function ask(' + args + ', expansion_proposal)');
 ask = activate(ask, /^(\.\. language_rule)$/m,
-  '$1\n.. diplomacy_expansion.prompt(expansion_proposal)');
+  '$1\n.. diplomacy_expansion.prompt(expansion_proposal)\n.. (player_dialogue and diplomacy_expansion.context(speaker_key) or "")');
 ruler = ruler.slice(0, askStart) + ask + ruler.slice(askEnd);
 ruler = activate(ruler, /^response_format = (response_schema\([^)\r\n]*\)),$/m,
   (_line, schema) => 'response_format = diplomacy_expansion.schema(' + schema + ', expansion_proposal),');
@@ -80,7 +86,16 @@ const talkEnd = ruler.indexOf('function ruler.take_turn(trigger)', talkStart);
 assert(talkStart >= 0 && talkEnd > talkStart);
 let talk = ruler.slice(talkStart, talkEnd);
 talk = activate(talk, /^function ruler\.talk_to\(faction_key, text\)$/m, 'function ruler.talk_to(faction_key, text, selection)');
-talk = activate(talk, /^ruler\.awaiting\[faction_key\] = os\.clock\(\)$/m, `local prepared, expansion_proposal, expansion_error = pcall(diplomacy_expansion.prepare, faction_key, text, me.key, me.turn, selection)
+talk = activate(talk, /^ruler\.awaiting\[faction_key\] = os\.clock\(\)$/m, `if not selection then
+    local ok, handled = pcall(diplomacy_expansion.handle, faction_key, text, me.key, me.turn)
+    if not ok then
+        log("EXPANSION|order failed: " .. tostring(handled))
+        ruler.last_error = T("note.no_answer", "No answer - say it again")
+        return
+    end
+    if handled then ruler.publish_status(nil, { activity = "idle" }); return end
+end
+local prepared, expansion_proposal, expansion_error = pcall(diplomacy_expansion.prepare, faction_key, text, me.key, me.turn, selection)
 if not prepared then
     log("EXPANSION|prepare failed: " .. tostring(expansion_proposal))
     expansion_error = TALKHAMMER_LANG and TALKHAMMER_LANG.code == "ru"
@@ -108,7 +123,7 @@ ruler = ruler.slice(0, talkStart) + talk + ruler.slice(talkEnd);
 ruler = activate(ruler, /^ok, note, why_code = ruler\.settle\(key, true, me\)$/m,
   'ok, note, why_code = ruler.settle(key, true, me, spec.expansion and spec.print or nil)');
 
-ruler = activate(ruler, /^return ruler\s*$/m, `do
+ruler = activate(ruler, /^return ruler\s*$/m, () => `do
 local expansion = (function()
 ${module}
 end)()
@@ -118,12 +133,67 @@ end)()
 local natural = (function()
 ${natural}
 end)()
+${services.join('\n')}
+local function ask_envoy(key, prompt, reply)
+    if not p2 or not p2.post or not p2.strict_format then return false end
+    local language = TALKHAMMER_LANG and TALKHAMMER_LANG.code == "ru" and "Russian" or "the current interface language"
+    local profile = state.character_of and state.character_of(key)
+    local snapshot = ruler.snapshot(key)
+    local player = cm:get_local_faction_name(true)
+    local preferences = type(slaanesh_stage) == "function" and slaanesh_stage(cm, json, log, key) or nil
+    local campaign, turn = state.data, cm:turn_number()
+    local request = {
+        messages = {
+            { role = "system", content = "You are " .. ruler.identity(key) .. " in the Warhammer Fantasy Old World."
+                .. " Answer in " .. language .. ", in character. Your reply represents only your own faction."
+                .. " Express conditions or refusal honestly. No deal or war has happened just because you answer."
+                .. (type(profile) == "string" and "\\n" .. profile or "")
+                .. (snapshot and snapshot.ok and "\\n" .. ruler.describe(snapshot, player) or "")
+                .. (preferences and "\\n" .. preferences or "")
+                .. "\\nReturn one short line, a verdict of accept/decline/counter, and an integer gold amount."
+                .. " Only a permitted exact gold payment belongs in gold. Otherwise set gold to zero." },
+            { role = "user", content = prompt },
+        },
+        response_format = p2.strict_format("court_reply", {
+            type = "object", properties = {
+                line = {type = "string"}, verdict = {type = "string", enum = {"accept", "decline", "counter"}},
+                gold = {type = "integer"},
+            },
+            required = {"line", "verdict", "gold"}, additionalProperties = false,
+        }),
+    }
+    local replied
+    local function finish(line, decision)
+        if replied then return end
+        replied = true
+        reply(line, decision)
+    end
+    local id = p2.post("/chat/completions", request, function(err, response)
+        if campaign ~= state.data or turn ~= cm:turn_number() then return finish() end
+        local choice = response and response.choices and response.choices[1]
+        local content = choice and choice.message and choice.message.content
+        if err or type(content) ~= "string" then return finish() end
+        local decision = json.decode(content)
+        if type(decision) ~= "table" or type(decision.line) ~= "string" or decision.line == ""
+            or type(decision.gold) ~= "number" or decision.gold < 0 or decision.gold ~= math.floor(decision.gold)
+            or (decision.verdict ~= "accept" and decision.verdict ~= "decline" and decision.verdict ~= "counter") then
+            return finish()
+        end
+        finish(decision.line, decision)
+    end)
+    return id ~= nil or replied == true
+end
 local init = ruler.init
 ruler.init = function(deps)
     init(deps)
     diplomacy_expansion = expansion.install({
         cm = cm, core = core, ruler = ruler, state = state, world = world, actions = actions,
-        influence = influence, natural = natural,
+        influence = influence, natural = natural, negotiation = negotiation, council = council, military = military,
+        ask_envoy = ask_envoy,
+        is_open = function()
+            local frame = ui and (ui.frame or ui.panel)
+            return frame and ui.mode == "talk" and frame:Visible()
+        end,
         localise = function(key) return common.get_localised_string(key) end,
         fold = u8.fold, words = u8.words, stem = u8.ru_stem,
         language = function() return TALKHAMMER_LANG and TALKHAMMER_LANG.code end,
