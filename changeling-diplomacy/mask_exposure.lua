@@ -1,5 +1,6 @@
 local exposure = {}
 local window = 5
+local envoy_travel = 2
 
 local treaty_signed = {
     peace = "peace", trade = "trade", non_aggression = "pact",
@@ -28,6 +29,14 @@ end
 function exposure.blocked_until(pair, turn)
     local until_turn = pair.exposed_until
     if until_turn and turn < until_turn then return until_turn end
+end
+
+function exposure.send_envoy(pair, session, plan, line)
+    local envoy = pair.envoy or { form = session.form, target = session.target, returns = session.turn + envoy_travel }
+    envoy.plan, envoy.line, envoy.text = plan, line, session.text
+    envoy.third, envoy.attitude = session.third, session.attitude
+    pair.envoy = envoy
+    return envoy
 end
 
 function exposure.known_warning(pair, turn)

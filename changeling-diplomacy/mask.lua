@@ -315,6 +315,12 @@ function mask.install(deps)
         return from and treaty_state(treaty_outcomes.break_alliance, from, to) == true
     end
 
+    local function can_contact_home_court(session)
+        local court, witness = live_pair(session.target, session.form.faction)
+        return court and (treaty_state(treaty_outcomes.break_alliance, court, witness)
+            or treaty_state(treaty_outcomes.break_trade, court, witness))
+    end
+
     local function blocked_by_obligations(from, to)
         if not parley.bound then return false end
         local ok, reason = pcall(parley.bound, from, to)
@@ -581,6 +587,24 @@ function mask.install(deps)
         return world.name_of and world.name_of(key) or key
     end
 
+    local function describe_envoy(envoy)
+        return "Двор отправил посланника в «" .. label(envoy.form.faction) .. "». Ответ ожидается в начале хода "
+            .. envoy.returns .. ". До его возвращения можно отступить или уточнить предложение."
+    end
+
+    local function envoy_session(envoy, turn)
+        return { campaign = state.data, form = envoy.form, target = envoy.target, turn = turn, epoch = context_epoch,
+            identity = ruler.identity(envoy.form.faction), text = envoy.text, third = envoy.third,
+            attitude = envoy.attitude, envoy = envoy }
+    end
+
+    local function restore_envoy(pair, turn)
+        local envoy = pair.envoy
+        if not envoy or turn >= envoy.returns or deps.actions.blocked or (active and active.envoy == envoy) then return end
+        if pending and pending.session.envoy == envoy and session_is_current(pending.session) then return end
+        pending = { session = envoy_session(envoy, turn), checking = true, plan = envoy.plan, line = envoy.line }
+    end
+
     local function court_summary(form, target, pair, turn, blocked)
         local lines = { "ЭТОТ РАЗГОВОР" }
         if blocked then lines[#lines + 1] = "Облик раскрыт. Сделки доступны с хода " .. blocked .. "." end
@@ -660,6 +684,13 @@ function mask.install(deps)
 
     local function show_pending(session, plan, line, assessment, background)
         local checking = not session.forced and not not needs_check(assessment)
+        if checking then
+            local pair = pair_state(session)
+            if pair.envoy or can_contact_home_court(session) then
+                session.envoy = exposure.send_envoy(pair, session, plan, line)
+                state.save()
+            end
+        end
         pending = { session = session, plan = plan, line = line, checking = checking }
         local plain = not panel or not panel.ready()
         local lines = plain and describe_plan(pending) or {}
@@ -668,9 +699,11 @@ function mask.install(deps)
             local hint = "/mask explain <уточнённое предложение> • /mask withdraw • /mask insist"
             table.insert(lines, 1, heading)
             for _, clue in ipairs(describe_clues(assessment)) do lines[#lines + 1] = clue end
+            if session.envoy then lines[#lines + 1] = describe_envoy(session.envoy) end
             lines[#lines + 1] = hint
             return tell_incident(session, lines, background, { lines = { heading, hint } })
         end
+        if session.envoy_recalled then lines[#lines + 1] = "Двор принял уточнение и отозвал посланника." end
         if plain then lines[#lines + 1] = line end
         lines[#lines + 1] = "Подтверди или отклони сделку. /mask confirm • /mask withdraw"
         report(ruler.label_for(session.target), lines, background)
@@ -696,6 +729,38 @@ function mask.install(deps)
         end
         if count > 0 then lines[#lines + 1] = "Предупреждение о двух обликах получили союзники двора (" .. count .. ")." end
         log("scandal at " .. session.target .. " attitude applied=" .. tostring(applied) .. " allies warned=" .. count)
+    end
+
+    local function resolve_envoys()
+        if deps.actions.blocked or not state.data or cm:get_local_faction_name(true) ~= changeling then return end
+        local turn = cm:turn_number()
+        local records = state.data.mask_diplomacy or {}
+        local due = {}
+        for key, pair in pairs(records) do
+            if pair.envoy and turn >= pair.envoy.returns then due[#due + 1] = key end
+        end
+        table.sort(due)
+        for _, key in ipairs(due) do
+            local pair = records[key]
+            local envoy = pair.envoy
+            pair.envoy = nil
+            if pending and pending.session.envoy == envoy then pending, incident = nil, nil end
+            local session = envoy_session(envoy, turn)
+            if can_contact_home_court(session) and owner_of(envoy.form.subtype) == envoy.form.faction then
+                local assessment = exposure.assess(pair, session, envoy.plan, allied)
+                local scandal = exposure.expose(pair, session, assessment)
+                local lines = { "Посланник вернулся из «" .. label(envoy.form.faction)
+                    .. "». Настоящий правитель опроверг полномочия самозванца. Двор разоблачил облик. Сделка отклонена.",
+                    "Сделки под этим обликом доступны с хода " .. pair.exposed_until .. "." }
+                if scandal then announce_scandal(session, scandal, lines) end
+                remember(session, "Облик раскрыт.", table.concat(lines, " "))
+            else
+                remember(session, envoy.line, "Посланник не смог подтвердить личность правителя. Сделка отменена.")
+            end
+            if panel_state and panel_state.target == envoy.target and ruler.counterpart == envoy.target then
+                draw_request = { target = envoy.target }
+            end
+        end
     end
 
     local function validate_plan(session, requested)
@@ -754,6 +819,7 @@ function mask.install(deps)
 
     local function settle(session, plan, line, assessment, background)
         local result = apply_plan(session, plan, assessment)
+        if session.envoy_recalled then result = "Двор принял уточнение и отозвал посланника.\n" .. result end
         remember(session, line, result)
         report(ruler.label_for(session.target), { "Облик: " .. session.identity, "", line, "", result }, background, { lines = {} })
     end
@@ -771,6 +837,7 @@ function mask.install(deps)
             end
             return
         end
+        if session.envoy and pair_state(session).envoy ~= session.envoy then return end
 
         local choice = not err and type(response) == "table" and response.choices and response.choices[1]
         local content = choice and choice.message and choice.message.content
@@ -788,7 +855,17 @@ function mask.install(deps)
             remember(session, text, result)
             return report(ruler.label_for(session.target), { "Облик: " .. session.identity, "", text, "", result }, true, { lines = {} })
         end
-        local assessment = exposure.assess(pair_state(session), session, plan, allied)
+        local pair = pair_state(session)
+        local assessment = exposure.assess(pair, session, plan, allied)
+        if session.envoy and not needs_check(assessment) then
+            if not assessment.deal then
+                return report(ruler.label_for(session.target), { text, "Двор по-прежнему ждёт посланника." }, true)
+            end
+            pair.envoy = nil
+            session.envoy = nil
+            session.envoy_recalled = true
+            state.save()
+        end
         if session.forced then
             if assessment.deal then return show_pending(session, plan, text, assessment, true) end
             return report("Маска", { "В реплике не распознано доступное предложение. Дипломатия не изменилась." }, true)
@@ -802,7 +879,8 @@ function mask.install(deps)
         settle(session, plan, text, assessment, true)
     end
 
-    local function talk(form, target, text)
+    local function talk(form, target, text, envoy)
+        resolve_envoys()
         if active or ruler.awaiting[target] then
             report("Маска", { "Дождись ответа на предыдущую реплику." })
             return
@@ -813,6 +891,14 @@ function mask.install(deps)
         end
         if pending and (pending.session.target ~= target or not session_is_current(pending.session)) then
             pending = nil
+        end
+        if state.data and not envoy then
+            local pair = exposure.pair(state.data, exposure.form_key(form), target)
+            if pair.envoy then
+                ruler.counterpart = target
+                observe_court()
+                restore_envoy(pair, cm:turn_number())
+            end
         end
         if pending then
             if pending.checking then
@@ -843,7 +929,8 @@ function mask.install(deps)
         ruler.counterpart = target
         observe_court()
         local session = { form = form, target = target, third = third, text = text, turn = visitor.turn,
-            campaign = state.data, started = os.clock(), identity = ruler.identity(form.faction), epoch = context_epoch }
+            campaign = state.data, started = os.clock(), identity = ruler.identity(form.faction), epoch = context_epoch,
+            envoy = envoy }
         local lower = u8.lower(text)
         session.confederation_requested = u8.index_of(lower, "конфедерац") or u8.index_of(lower, "confederat")
         session.vassalage_requested = u8.index_of(lower, "вассал") or u8.index_of(lower, "сюзерен")
@@ -868,7 +955,7 @@ function mask.install(deps)
         log("trace: attitude")
         local attitude = world.attitude and world.attitude(target, form.faction)
         session.attitude = tonumber(attitude)
-        session.forced = ruler.take_changeling_cheat(target)
+        session.forced = not envoy and ruler.take_changeling_cheat(target)
         log("trace: war status")
         local at_war = deps.orders.at_war(form.faction, target)
         log("trace: recipient sheet")
@@ -909,7 +996,9 @@ function mask.install(deps)
             "Available outcomes: " .. table.concat(choices, ", "),
             "Outcomes conditional on peace: " .. table.concat(after_peace_choices, ", "),
             "Selected third faction: " .. (third and ((world.name_of and world.name_of(third) or third) .. " (" .. third .. ")") or "none"),
-            "Visitor's current words:\n" .. text,
+            (envoy and ("You suspended the previous deal and sent an envoy to verify the visitor. Judge the revised terms. "
+                .. "Lua determines whether the inquiry can close. Your previous reply: " .. envoy.line .. "\n\n") or "")
+                .. "Visitor's current words:\n" .. text,
         }, "\n\n")
         local request = {
             messages = { { role = "system", content = system }, { role = "user", content = user } },
@@ -951,6 +1040,14 @@ function mask.install(deps)
     end
 
     local function answer_pending(mode, explanation)
+        resolve_envoys()
+        if ruler.counterpart and state.data and can_use_mask() then
+            local form = selected_form()
+            if form then
+                local pair = exposure.pair(state.data, exposure.form_key(form), ruler.counterpart)
+                restore_envoy(pair, cm:turn_number())
+            end
+        end
         local check = pending
         if not check or deps.actions.blocked or not session_is_current(check.session) then
             pending, incident = nil, nil
@@ -966,11 +1063,18 @@ function mask.install(deps)
             return report("Маска", { "Введи новое предложение и отправь кнопкой «Уточнить» или командой /mask explain." })
         end
         local session = check.session
+        if session.envoy and mode == "insist" then
+            return report("Маска", { "Двор приостановил сделку до возвращения посланника.", describe_envoy(session.envoy) })
+        end
         pending, incident = nil, nil
         if mode == "withdraw" then
+            if session.envoy then
+                pair_state(session).envoy = nil
+                state.save()
+            end
             return report("Маска", { "Предложение отозвано. Дипломатия не изменилась." })
         end
-        if mode == "explain" then return talk(session.form, session.target, explanation) end
+        if mode == "explain" then return talk(session.form, session.target, explanation, session.envoy) end
         local plan = validate_plan(session, check.plan)
         if not plan then return report("Маска", { "Условия больше недоступны. Сделка отменена." }) end
         local pair = pair_state(session)
@@ -1013,6 +1117,12 @@ function mask.install(deps)
             local target = ruler.counterpart
             if not target or target == changeling or not world.exists(target) or not state.data then
                 return report("Воля Тзинча", { "Сначала выбери собеседника." })
+            end
+            resolve_envoys()
+            local form = can_use_mask() and selected_form()
+            if form then
+                local pair = exposure.pair(state.data, exposure.form_key(form), target)
+                restore_envoy(pair, cm:turn_number())
             end
             if deps.actions.blocked or pending or active or ruler.awaiting[target] then
                 return report("Воля Тзинча", { "Принуждение доступно перед новой сделкой, когда действия разрешены." })
@@ -1113,6 +1223,7 @@ function mask.install(deps)
         end
 
         local function draw(request)
+            resolve_envoys()
             local target, turn = request.target, cm:turn_number()
             if target ~= ruler.counterpart or not can_use_mask() or not world.exists(target) then return end
             local form, reason = selected_form()
@@ -1128,6 +1239,7 @@ function mask.install(deps)
             if pending and (deps.actions.blocked or not session_is_current(pending.session)) then
                 pending, incident = nil, nil
             end
+            if pair then restore_envoy(pair, turn) end
             local checking = pending and pending.checking
             local notice = panel_notice
             if notice and (notice.target ~= target or notice.turn ~= turn or notice.campaign ~= state.data
@@ -1139,6 +1251,7 @@ function mask.install(deps)
                 warning = assessment.warning and pair.warning
                 detail = describe_clues(assessment)
                 table.insert(detail, 1, "ПРОВЕРКА ДВОРА")
+                if pending.session.envoy then detail[#detail + 1] = describe_envoy(pending.session.envoy) end
             elseif pair then
                 detail = court_summary(form, target, pair, turn, blocked)
                 warning = notice and notice.warning
@@ -1212,6 +1325,9 @@ function mask.install(deps)
     core:add_listener("THMaskFormConfirmed", "ComponentLClickUp",
         function(context) return context.string == "button_shapeshift" end,
         function() reset_context(); queue_refresh() end, true)
+    core:add_listener("THMaskEnvoyReturns", "FactionTurnStart",
+        function(context) return context:faction():name() == changeling end,
+        resolve_envoys, true)
     queue_refresh()
     log("installed (cached form reader; advanced diplomacy)")
 end

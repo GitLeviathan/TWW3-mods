@@ -187,7 +187,7 @@ addon.install({
 })
 
 local function dispatch(event, name)
-    local context = { string = name }
+    local context = { string = name, faction = function() return { name = function() return name end } end }
     for _, listener in pairs(listeners[event] or {}) do
         if listener.condition(context) then listener.callback(context) end
     end
@@ -392,8 +392,9 @@ assert_pair("war", "kislev", "gelt")
 ruler.talk_to("gelt", "Kislev grants you military access.")
 reply("grant_military_access")
 assert_pair("military_access", "kislev", "gelt")
-trades["gelt|kislev"], access["gelt|kislev"] = true, true
+alliances["gelt|kislev"], access["gelt|kislev"] = nil, true
 for _, outcome in ipairs({ "break_non_aggression", "break_trade", "break_military_access_incoming", "break_military_access_outgoing" }) do
+    if outcome == "break_trade" then trades["gelt|kislev"] = true end
     ruler.talk_to("gelt", "Cancel this agreement.")
     assert(has_outcome(outcome), "Existing agreement cannot be cancelled: " .. outcome)
     reply(outcome)
@@ -526,7 +527,8 @@ assert_pair("break_non_aggression", "gelt", "reikland")
 assert(not pacts["gelt|reikland"], "An expired exposure still blocked a deal")
 
 local function prepare_peace_reversal(court)
-    at_war, pacts[court .. "|" .. owner] = true, nil
+    local pair_key = court .. "|" .. owner
+    at_war, pacts[pair_key], trades[pair_key], alliances[pair_key] = true, nil, nil, nil
     negotiate(court, "Conclude peace.", "peace")
     assert_pair("peace", owner, court)
     negotiate(court, "Sign a pact.", "non_aggression")
@@ -1118,5 +1120,84 @@ assert(not ruler.take_changeling_cheat("gelt"), "Cancelling did not disarm the c
 cheat_command()
 turn = turn + 1
 assert(not ruler.take_changeling_cheat("gelt"), "The cheat survived the end of the turn")
+
+do
+    local deal_key = "gelt|" .. owner
+    local function open_envoy_check()
+        state.data = {}
+        pacts[deal_key], access[deal_key], trades[deal_key] = nil, nil, true
+        negotiate("gelt", "Sign a pact.", "non_aggression")
+        negotiate("gelt", "Break the pact.", "break_non_aggression")
+        dismiss_narration()
+        ruler.tick()
+        assert(not applied and pacts[deal_key] and ui_ledger:find("посланник", 1, true)
+            and ui_ledger:find(owner, 1, true), "A suspicious court with a trade route did not send an envoy")
+    end
+
+    turn = 160
+    mask_command("on")
+    ruler.select("gelt")
+    ruler.show_conversation("gelt")
+    open_envoy_check()
+    ruler.select("bystander")
+    ruler.show_conversation("bystander")
+    ruler.tick()
+    assert(not ui_ledger:find("посланник", 1, true), "A different court showed the envoy")
+    turn = turn + 1
+    state.data = copy_save(state.data)
+    ruler.select("gelt")
+    ruler.show_conversation("gelt")
+    ruler.tick()
+    assert(buttons.th_mask_withdraw.visible and ui_ledger:find("162", 1, true),
+        "Loading on the next turn did not restore the inquiry and deadline")
+    click("withdraw")
+    turn = 162
+    ruler.tick()
+    assert(pacts[deal_key] and not ui_ledger:find("Облик раскрыт", 1, true), "A withdrawn case exposed the mask")
+
+    open_envoy_check()
+    input_text = "I have nothing more to propose."
+    click("explain")
+    reply("none")
+    ruler.tick()
+    assert(buttons.th_mask_withdraw.visible and ui_ledger:find("164", 1, true),
+        "An explanation without a new deal cancelled or restarted the envoy")
+    input_text = "Keep the pact and grant passage instead."
+    click("explain")
+    reply("military_access")
+    ruler.tick()
+    assert(pacts[deal_key] and not buttons.th_mask_withdraw.visible and ui_lines:find("отозвал посланника", 1, true),
+        "A verified alternative did not end the inquiry")
+    assert_pair("military_access", "gelt", owner)
+
+    open_envoy_check()
+    click("insist")
+    assert(not applied and pacts[deal_key], "Insisting applied the deal before the envoy returned")
+    ruler.select("bystander")
+    turn = 164
+    dispatch("FactionTurnStart", player)
+    ruler.select("gelt")
+    ruler.show_conversation("gelt")
+    ruler.tick()
+    assert(pacts[deal_key] and ui_ledger:find("Облик раскрыт", 1, true) and ui_ledger:find("169", 1, true)
+        and ui_lines:find("Посланник", 1, true), "The envoy did not expose the form at the deadline")
+    turn = 165
+    state.data = copy_save(state.data)
+    dispatch("FactionTurnStart", player)
+    ruler.tick()
+    assert(ui_ledger:find("169", 1, true), "Loading an envoy result reset the exposure clock")
+
+    turn = 169
+    ruler.tick()
+    assert(not ui_ledger:find("Облик раскрыт", 1, true), "The envoy caused a longer exposure block than normal")
+
+    open_envoy_check()
+    trades[deal_key], alliances[deal_key] = nil, nil
+    turn = 171
+    dispatch("FactionTurnStart", player)
+    ruler.tick()
+    assert(not ui_ledger:find("Облик раскрыт", 1, true) and not buttons.th_mask_withdraw.visible
+        and ui_lines:find("Посланник не смог", 1, true), "A court obtained a witness after losing contact")
+end
 
 print("Mask diplomacy tests passed")

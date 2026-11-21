@@ -53,6 +53,33 @@ function pack(entries) {
   return Buffer.concat([header, index, ...entries.map((entry) => entry[1])]);
 }
 
+async function writePack(entries) {
+  const result = pack(entries);
+  const decoded = unpack(result);
+  if (decoded.size !== entries.length || entries.some(([name, data]) => !decoded.get(name)?.content.equals(data))) {
+    throw new Error('Failed to verify the generated pack');
+  }
+  await writeFile(output, result);
+  console.log(output);
+}
+
+if (process.argv[2] === '--installed') {
+  const baseline = unpack(await readFile(process.argv[3]));
+  const replacements = new Map([
+    [modulePath, './mask.lua'], [exposurePath, './mask_exposure.lua'], [panelPath, './mask_panel.lua'],
+  ]);
+  for (const path of [mainPath, worldPath, layoutPath, ...replacements.keys()]) {
+    assert(baseline.has(path) && !baseline.get(path).compressed, 'Invalid installed mask entry: ' + path);
+  }
+  assert.equal(baseline.size, 6, 'Expected a standalone TalkHammer mask mod');
+  assert(baseline.get(mainPath).content.includes(Buffer.from('mask.install')), 'Missing installed mask hook');
+  const entries = await Promise.all([...baseline].map(async ([name, entry]) => [
+    name, replacements.has(name) ? await readFile(new URL(replacements.get(name), import.meta.url)) : entry.content,
+  ]));
+  await writePack(entries);
+  process.exit(0);
+}
+
 function addPanelButtons(layout) {
   const hierarchy = layout.match(/<th_accept this="[^"]+"\s*\/>/g);
   const definitions = layout.match(/<th_accept\r?\n[^>]*>[\s\S]*?<\/th_accept>/g);
@@ -154,10 +181,4 @@ for (const change of installedVersion.changes.toReversed()) {
 }
 assert.equal(createHash('sha256').update(pinnedMain).digest('hex'), installedVersion.resultSha256);
 mainOutput[1] = Buffer.from(pinnedMain);
-const result = pack(entries);
-const decoded = unpack(result);
-if (decoded.size !== entries.length || entries.some(([name, data]) => !decoded.get(name)?.content.equals(data))) {
-  throw new Error('Failed to verify the generated pack');
-}
-await writeFile(output, result);
-console.log(output);
+await writePack(entries);
