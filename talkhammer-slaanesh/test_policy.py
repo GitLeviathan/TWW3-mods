@@ -141,7 +141,9 @@ def run(pack_path, config_path=None):
     ruler_source=entries[r'script\talkhammer\lib\ruler.lua'][0].decode()
     assert 'policy.instruction(context)' in ruler_source
     assert 'cm:get_local_faction_name(true)' in ruler_source
-    assert 'end, text, true)' in ruler_source
+    assert 'end, text, true, forced_agreement)' in ruler_source
+    assert 'and ruler.take_changeling_cheat(faction_key)' in ruler_source
+    assert '.. (forced_agreement and ("\\n\\n" .. forced_agreement) or "")' in ruler_source
     # Execute the exact packaged request hook, not a parallel reconstruction.
     start=ruler_source.index('local slaanesh_stage = (function()')
     end=ruler_source.index('local function ask(',start)

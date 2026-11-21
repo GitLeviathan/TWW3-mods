@@ -15,4 +15,4 @@ python talkhammer-slaanesh/test_policy.py talkhammer-slaanesh/00_talkhammer_slaa
 python talkhammer-slaanesh/regard-boundaries.test.py talkhammer-slaanesh/00_talkhammer_slaanesh_diplomacy.pack
 ```
 
-Пакет воспроизводит установленный SHA-256 `a157b35790426f9bec019be8a3875fd6810f45d121f68d29a12fffb1c573b82c`. Проверены настоящие Lua-расчёты и условия инструкции. Живой диалог и исполнение сделки требуют отдельного игрового прогона.
+Пакет передаёт одноразовую инструкцию `/cheat` в прямые переговоры кампании Перевёртыша, если установлено [дополнение для маски](../changeling-diplomacy/README.md). Стадии порчи и условия их применения используют прежние расчёты.

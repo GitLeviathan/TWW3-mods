@@ -95,6 +95,25 @@ for(const change of adjustments.changes.toReversed()){
     ruler=ruler.slice(0,change.start)+change.new+ruler.slice(change.end);
 }
 assert.equal(createHash('sha256').update(ruler).digest('hex'),adjustments.resultSha256);
+
+// The Changeling add-on owns the one-shot command. Consume it only when a new
+// player dialogue starts, independently of AI parley, retries, or narration.
+const dialogueStart = 'ruler.awaiting[faction_key] = os.clock()';
+const dialogueEnd = 'end, text, true)';
+const patchedAsk = 'local function ask(speaker_key, personality, user_text, on_decision, player_dialogue, apply_slaanesh_stage)';
+const talkStart = ruler.indexOf('function ruler.talk_to(faction_key, text)');
+const talkEnd = ruler.indexOf('function ruler.take_turn(trigger)', talkStart);
+assert(talkStart > 0 && talkEnd > talkStart);
+const talk = ruler.slice(talkStart, talkEnd);
+for (const hook of [dialogueStart, dialogueEnd]) assert.equal(talk.split(hook).length, 2);
+assert.equal(ruler.split(patchedAsk).length, 2);
+assert.equal(ruler.split('.. stage_instruction').length, 2);
+ruler = ruler.slice(0, talkStart) + talk
+    .replace(dialogueStart, `${dialogueStart}\nlocal forced_agreement = ruler.take_changeling_cheat\n    and ruler.take_changeling_cheat(faction_key)`)
+    .replace(dialogueEnd, 'end, text, true, forced_agreement)') + ruler.slice(talkEnd);
+ruler = ruler.replace(patchedAsk, patchedAsk.slice(0, -1) + ', forced_agreement)')
+    .replace('.. stage_instruction', '.. stage_instruction\n.. (forced_agreement and ("\\n\\n" .. forced_agreement) or "")');
+
 entries.set(rulerPath,{content:Buffer.from(ruler),compressed:0});
 entries.set(dispositionPath,{content:Buffer.from(disposition),compressed:0});
 entries.set(policyPath,{content:Buffer.from(policy),compressed:0});
