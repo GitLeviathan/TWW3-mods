@@ -2,10 +2,12 @@ local panel = {}
 local prefix = "th_gift_"
 local page_size = 8
 local control_ids = { "open", "header", "previous", "next", "back", "send" }
+local exits = { th_mask_toggle = true, th_news = true, th_close = true }
 
 function panel.install(deps)
     local ui, ruler, cm, state = deps.ui, deps.ruler, deps.cm, deps.state
     local components, root, selection, open_shown = {}, nil, nil, nil
+    local queued
     local function tr(en, ru) return deps.language() == "ru" and ru or en end
     local function available()
         if ui.mode ~= "talk" or not ui.frame or not ui.field or not ui.speak_btn or not ruler.counterpart or ruler.accept_shown
@@ -26,15 +28,24 @@ function panel.install(deps)
     local function close()
         local draft = selection and selection.draft
         selection = nil
+        queued = nil
         if components.picker then pcall(function() components.picker:SetVisible(false) end) end
         if draft then
             pcall(function()
                 draft.field:SetStateText(draft.text)
                 draft.field:SetVisible(draft.field_visible)
+            end)
+            pcall(function()
                 draft.button:SetStateText(draft.caption)
                 draft.button:SetVisible(draft.button_visible)
             end)
         end
+    end
+    local function guard(fn, ...)
+        local ok, reason = pcall(fn, ...)
+        if ok then return end
+        close()
+        if deps.log then deps.log("EXPANSION|picker: " .. tostring(reason)) end
     end
     local function refresh()
         if not components.picker then return end
@@ -99,9 +110,8 @@ function panel.install(deps)
     end
     local function click(id)
         if id == "open" then
-            if not available() or not components.picker then return end
+            if not open_shown or not available() or not components.picker then return end
             local key = ruler.counterpart
-            if ruler.show_conversation then ruler.show_conversation(key) end
             selection = { key = key, turn = cm:turn_number(), campaign = state.data, draft = {
                 field = ui.field, button = ui.speak_btn, text = ui.field:GetStateText() or "",
                 caption = ui.speak_btn:GetStateText() or tr("Speak", "Сказать"),
@@ -159,9 +169,18 @@ function panel.install(deps)
         return result
     end
     ruler.tick = function(...)
+        -- Release the field before the mask or native conversation redraws it.
+        if selection and not current() then close() end
         local result = tick(...)
-        refresh()
-        if selection then update_search() end
+        local event = queued
+        queued = nil
+        guard(function()
+            refresh()
+            if event and event.key == ruler.counterpart and event.selection == selection and event.root == root then
+                click(event.id)
+            end
+            if selection then update_search() end
+        end)
         return result
     end
     ui.hide = function(...)
@@ -169,13 +188,19 @@ function panel.install(deps)
         return hide(...)
     end
     deps.core:add_listener("TalkHammerGiftPicker", "ComponentLClickUp", function(context)
-        return type(context.string) == "string" and context.string:sub(1, #prefix) == prefix
+        local id = context.string
+        return type(id) == "string" and (exits[id] or id:sub(1, #prefix) == prefix)
     end, function(context)
-        click(context.string:sub(#prefix + 1))
+        local id = context.string
+        if exits[id] then
+            close()
+        else
+            queued = { id = id:sub(#prefix + 1), key = ruler.counterpart, selection = selection, root = root }
+        end
     end, true)
     return { consume_speak = function()
         if not selection then return false end
-        if current() then update_search() else close(); refresh() end
+        if current() then guard(update_search) else close(); guard(refresh) end
         return true
     end }
 end

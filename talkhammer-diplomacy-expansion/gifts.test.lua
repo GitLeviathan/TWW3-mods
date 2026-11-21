@@ -2,6 +2,7 @@ local directory = (... or ".") .. "/"
 local gifts = assert(loadfile(directory .. "settlement-gifts.lua"))()
 local influence = assert(loadfile(directory .. "vassal-influence.lua"))()
 local protect_output = assert(loadfile(directory .. "protected-output.lua"))()
+local natural = assert(loadfile(directory .. "natural-gifts.lua"))()
 local normal_output, fallback_output
 local game_environment = { out = setmetatable({}, {__call = function(_, message) normal_output = message end}) }
 local safe_out, module_environment = protect_output(game_environment, function(why, message)
@@ -15,8 +16,9 @@ assert(pcall(module_environment.out, "queued after logger failure"))
 assert(fallback_output == "queued after logger failure")
 module_environment.TALKHAMMER_U8 = {}
 assert(module_environment.TALKHAMMER_U8 == game_environment.TALKHAMMER_U8)
-local names = { player = "Обманщики", sisters = "Сёстры Сумерек", kislev = "Ледяной двор", malus = "Хаг Греф" }
-local cities = { faraway = "Дальняя гавань", home = "Свой город" }
+local names = { player = "Обманщики", sisters = "Сёстры Сумерек", kislev = "Ледяной двор", malus = "Хаг Греф",
+    har_ganeth = "Хар Ганет" }
+local cities = { faraway = "Дальняя гавань", home = "Свой город", grond = "Гронд" }
 local current_turn, moves, stock_accepts, stock_cases = 80, 0, 0, 0
 local confederations, war, player_vassal = 0, false, true
 local city_owners = { faraway = "sisters", home = "player" }
@@ -43,6 +45,10 @@ for key in pairs(names) do
         at_war_with = function() return war end,
         subculture = function() return (key == "sisters" or key == "malus") and "elves" or key end,
         was_confederated = function() return dead[key] == "confederated" end,
+        faction_leader = function()
+            return { is_null_interface = function() return key ~= "har_ganeth" end,
+                character_subtype_key = function() return "wh2_dlc10_def_crone_hellebron" end }
+        end,
         name = function() return key end,
         region_list = function()
             local entries = {}
@@ -107,13 +113,22 @@ local deps = {
         listeners[key] = {condition = condition, received = received}
     end, remove_listener = function(_, key) listeners[key] = nil end },
     state = { data = {}, remember = function(_, _, text) notes[#notes + 1] = text end },
-    world = { keys = {"player", "sisters", "kislev", "malus"}, name_of = function(key) return names[key] end },
+    world = { keys = {"player", "sisters", "kislev", "malus"}, name_of = function(key) return names[key] end,
+        leader_name = function(key) if key == "har_ganeth" then return "Ведьма Хеллеброн" end end },
     actions = { blocked = false },
     localise = function(key) return cities[key:match("^regions_onscreen_(.+)$")] end,
     fold = function(text) return (text:gsub("[A-Z]", string.lower)) end,
     language = function() return "ru" end,
     transcript = function() end,
     influence = influence,
+    natural = natural,
+    words = function(text)
+        local result = {}
+        text = text:gsub("Г", "г"):gsub("Х", "х"):gsub("П", "п"):gsub("В", "в"):gsub("ё", "е")
+        text = text:gsub("[A-Z]", string.lower)
+        for word in text:gmatch("[^%s%p]+") do result[#result + 1] = word end
+        return result
+    end,
 }
 local controller = gifts.install(deps)
 assert(#ruler.gift_choices("sisters") == 2)
@@ -267,5 +282,45 @@ confederation = assert(ruler.table_action("malus", current_turn))
 assert(ruler.settle("malus", true, {turn = current_turn}, confederation.print))
 assert(confederations == 1)
 assert(not ruler.settle("malus", true, {turn = current_turn}, confederation.print))
+
+dead.sisters = false
+deps.world.keys[#deps.world.keys + 1] = "har_ganeth"
+ruler.counterpart = "sisters"
+city_owners.grond = "sisters"
+async_transfer = false
+local instruction = "передай своё поселение Гронд ведьме Хелеброн"
+local original_moves = moves
+assert(controller.prepare("sisters", instruction .. "?", "player", current_turn) == nil)
+assert(controller.prepare("sisters", instruction .. " или Хаг Греф", "player", current_turn) == nil)
+assert(controller.prepare("sisters", instruction .. " если она заплатит", "player", current_turn) == nil)
+assert(controller.prepare("sisters", "Передай привет ведьме Хелеброн", "player", current_turn) == nil)
+local unknown, why_unknown = controller.prepare("sisters", "Передай поселение Гронд незнакомцу", "player", current_turn)
+assert(not unknown and why_unknown:find("Кому передать", 1, true))
+local leader_name = deps.world.leader_name
+deps.world.leader_name = function(key)
+    if key == "malus" then return "Ведьма Хелеброн" end
+    return leader_name(key)
+end
+local ambiguous, why_ambiguous = controller.prepare("sisters", instruction, "player", current_turn)
+assert(not ambiguous and why_ambiguous:find("Кому передать", 1, true))
+deps.world.leader_name = leader_name
+local order = prepare(instruction)
+assert(order.automatic and order.region == "grond" and order.to == "har_ganeth" and order.from == "sisters")
+assert(controller.finish(order, { line = "Прошу оплаты.", gift_agreed = false }))
+assert(moves == original_moves and not ruler.table_action("sisters", current_turn))
+order = prepare(instruction)
+city_owners.grond = "player"
+assert(controller.finish(order, { line = "Согласна.", gift_agreed = true }))
+assert(moves == original_moves and city_owners.grond == "player")
+local missing, why_missing = controller.prepare("sisters", instruction, "player", current_turn)
+assert(not missing and why_missing)
+city_owners.grond = "sisters"
+order = prepare(instruction)
+assert(controller.finish(order, { line = "Согласна.", gift_agreed = true }))
+assert(moves == original_moves + 1 and city_owners.grond == "har_ganeth")
+assert(not ruler.table_action("sisters", current_turn))
+assert(not controller.finish(order, { line = "Повтор.", gift_agreed = true }))
+assert(moves == original_moves + 1)
+print("Natural gift: named ruler, ambiguity, refusal, stale ownership, and single automatic transfer passed")
 print("Settlement gifts: consent, confirmation, live ownership, expiry, and delayed transfer passed")
 print("Vassal influence: both parties, refusal, eligibility, direction, and confirmation passed")

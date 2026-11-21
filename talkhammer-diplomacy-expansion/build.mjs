@@ -16,6 +16,7 @@ const jsonPath = 'script\\talkhammer\\lib\\json.lua';
 const source = readEntry(base, rulerPath).toString('utf8');
 const module = (await readFile(new URL('./settlement-gifts.lua', import.meta.url), 'utf8')).trimEnd();
 const influence = (await readFile(new URL('./vassal-influence.lua', import.meta.url), 'utf8')).trimEnd();
+const natural = (await readFile(new URL('./natural-gifts.lua', import.meta.url), 'utf8')).trimEnd();
 const protectedOutput = (await readFile(new URL('./protected-output.lua', import.meta.url), 'utf8')).trimEnd();
 const picker = await readFile(new URL('./gift-panel.lua', import.meta.url));
 
@@ -35,7 +36,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.4")`);
+log("DIPLOMACY|Expansion test.5")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -52,7 +53,8 @@ if ui then
     local module = load_module("talkhammer/lib/gift_panel.lua")
     if module then
         local ok, result = pcall(module.install, { ui = ui, ruler = ruler, core = core,
-            cm = cm, state = state, fold = u8.fold, language = function() return lang and lang.code end })
+            cm = cm, state = state, fold = u8.fold, log = log,
+            language = function() return lang and lang.code end })
         if ok then gift_picker = result else log("EXPANSION|picker failed: " .. tostring(result)) end
     end
 end
@@ -113,13 +115,17 @@ end)()
 local influence = (function()
 ${influence}
 end)()
+local natural = (function()
+${natural}
+end)()
 local init = ruler.init
 ruler.init = function(deps)
     init(deps)
     diplomacy_expansion = expansion.install({
-        cm = cm, core = core, ruler = ruler, state = state, world = world, actions = actions, influence = influence,
+        cm = cm, core = core, ruler = ruler, state = state, world = world, actions = actions,
+        influence = influence, natural = natural,
         localise = function(key) return common.get_localised_string(key) end,
-        fold = u8.fold,
+        fold = u8.fold, words = u8.words, stem = u8.ru_stem,
         language = function() return TALKHAMMER_LANG and TALKHAMMER_LANG.code end,
         transcript = add_transcript,
         speak = function(key, line)

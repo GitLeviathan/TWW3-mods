@@ -28,7 +28,7 @@ export function addGiftPanel(layout) {
     definitions.push(definition);
     return { id, guid: firstGuid };
   }
-  const open = clone('th_accept', 'th_gift_open', 220, 454, 142, 34);
+  const open = clone('th_accept', 'th_gift_open', 890, 426, 190, 24);
   const picker = clone('th_frame', 'th_gift_picker', 20, 70, 1060, 300, true);
   const children = [
     clone('th_title', 'th_gift_header', 16, 6, 1028, 40),

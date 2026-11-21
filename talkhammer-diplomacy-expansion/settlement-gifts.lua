@@ -170,6 +170,57 @@ function gifts.install(deps)
         return found, donor
     end
 
+    local function natural_order(key, text, player)
+        if ruler.expansion_mask_active and ruler.expansion_mask_active() then return end
+        local tokens, has_town = deps.natural.command(text, deps.words)
+        if not tokens then return end
+        local counterpart = living_faction(key)
+        if not counterpart or key == player or counterpart:is_human() then return end
+        local cities = {}
+        local regions = counterpart:region_list()
+        for index = 0, regions:num_items() - 1 do
+            local region = regions:item_at(index):name()
+            cities[#cities + 1] = { key = region, labels = { place_name(region) } }
+        end
+        local function recipients()
+            local choices, seen = {}, {}
+            local function add(faction_key)
+                if faction_key == key or seen[faction_key] then return end
+                seen[faction_key] = true
+                local faction = living_faction(faction_key)
+                if not faction then return end
+                local labels = { world.name_of(faction_key) }
+                local name = world.leader_name(faction_key)
+                if name and name ~= "" then
+                    labels[#labels + 1] = name
+                    local words = deps.words(name)
+                    if #words > 1 then labels[#labels + 1] = words[#words] end
+                end
+                local leader = faction:faction_leader()
+                if valid(leader) and leader:character_subtype_key() == "wh2_dlc10_def_crone_hellebron" then
+                    labels[#labels + 1] = "Хелеброн"
+                    labels[#labels + 1] = "Хеллеброн"
+                    labels[#labels + 1] = "Hellebron"
+                end
+                if faction_key == player then
+                    labels[#labels + 1] = "мне"
+                    labels[#labels + 1] = "me"
+                end
+                choices[#choices + 1] = { key = faction_key, labels = labels }
+            end
+            add(player)
+            for _, faction_key in ipairs(world.keys or {}) do add(faction_key) end
+            return choices
+        end
+        local region, recipient, missing = deps.natural.resolve(tokens, cities, recipients, deps.words, deps.stem)
+        if region then return region, recipient end
+        if missing == "city" and not has_town then return end
+        local why = missing == "city"
+            and tr("Which of my settlements should I give away? Name one.", "Какое из моих поселений передать? Укажи одно название.")
+            or tr("Who should receive the settlement? Name one faction or ruler.", "Кому передать поселение? Назови одну фракцию или её правителя.")
+        return nil, nil, why
+    end
+
     local function prepare(key, text, player, turn, selection)
         local subject, receiver, explicit
         if selection then
@@ -178,6 +229,14 @@ function gifts.install(deps)
             subject, receiver, explicit = fields(text or "", fold)
         end
         local kind = gift_kind
+        local automatic
+        if not explicit then
+            local why
+            subject, receiver, why = natural_order(key, text or "", player)
+            if why then return nil, why end
+            automatic = subject ~= nil
+            explicit = automatic
+        end
         if not explicit then
             subject, receiver, explicit = influence.parse(text or "")
             kind = influence_kind
@@ -197,13 +256,14 @@ function gifts.install(deps)
         if on_table(key, turn) or stock_table_action(key, turn) then
             return nil, tr("Resolve the offer on the table first.", "Сначала подтверди или отклони сделку на столе.")
         end
-        local recipient = resolve_faction(receiver, player, key)
+        local recipient = automatic and receiver or resolve_faction(receiver, player, key)
         if not recipient then
             return nil, tr("Name one active recipient faction.", "Укажи точное название одной действующей фракции-получателя.")
         end
         local region, donor
         if kind == gift_kind then
-            region, donor = resolve_region(subject, player, key)
+            if automatic then region, donor = subject, key
+            else region, donor = resolve_region(subject, player, key) end
             if not region then
                 return nil, tr("Name one settlement held by you or the counterpart.", "Укажи точное название одного поселения игрока или собеседника.")
             end
@@ -219,7 +279,7 @@ function gifts.install(deps)
         end
         next_id = next_id + 1
         local gift = { kind = kind, campaign = state.data, turn = turn, player = player, key = key,
-            from = donor, to = recipient, region = region, id = next_id }
+            from = donor, to = recipient, region = region, id = next_id, automatic = automatic }
         local ok, why = can_transfer(gift)
         if not ok then return nil, why end
         requested[key] = gift
@@ -278,13 +338,16 @@ function gifts.install(deps)
     local function prompt(gift)
         if not gift then return "" end
         if gift.kind == influence_kind then return influence.prompt(gift) end
+        local timing = gift.automatic and " The player has already authorized this exact transfer if you agree."
+            .. " Acknowledge your decision; the transfer has not been executed yet."
+            or " The gift awaits the player's confirmation; no settlement has changed hands."
         return "\n\nSETTLEMENT GIFT FOR THIS AUDIENCE: " .. details(gift)
             .. ". This is one unconditional gift. You are " .. world.name_of(gift.key)
             .. (gift.key == gift.from and ", its donor." or ", its recipient.")
             .. " You may agree or decline in character. Set gift_agreed=true only for clear agreement"
             .. " to this exact gift with no price or condition. Otherwise set gift_agreed=false."
-            .. " Negotiating or asking for payment is not agreement. The gift awaits the player's"
-            .. " confirmation; no settlement has changed hands. Use action=none and make no other deal."
+            .. " Negotiating or asking for payment is not agreement."
+            .. timing .. " Use action=none and make no other deal."
     end
 
     local function consent_field(gift)
@@ -307,6 +370,7 @@ function gifts.install(deps)
         return format
     end
 
+    local apply_deal
     local function finish(gift, decision)
         local key = gift.key
         if requested[key] ~= gift then return false end
@@ -320,7 +384,16 @@ function gifts.install(deps)
         end
         local agreed = decision[consent_field(gift)] == true
         if gift.kind == influence_kind and not agreed then influence.consent(gift, false) end
-        if agreed then
+        if agreed and gift.automatic then
+            if on_table(key, gift.turn) or stock_table_action(key, gift.turn)
+                or (ruler.counterpart == key and ruler.expansion_mask_active and ruler.expansion_mask_active()) then
+                note(key, tr("Repeat the request in direct conversation with no other offer on the table.",
+                    "Повтори просьбу в прямом разговоре, когда на столе не будет другой сделки."))
+            else
+                local ok, why = apply_deal(gift)
+                if not ok then note(key, why) end
+            end
+        elseif agreed then
             local ok, why = can_transfer(gift)
             if ok then
                 if gift.kind == gift_kind or influence.consent(gift, true) then
@@ -380,19 +453,8 @@ function gifts.install(deps)
         return first.from == second.from or first.from == second.to or first.to == second.from or first.to == second.to
     end
 
-    ruler.settle = function(key, accept, me, confirmation)
-        local gift = on_table(key)
-        if not gift then
-            if confirmation then return false, tr("That offer has expired.", "Это предложение уже снято.") end
-            return stock_settle(key, accept, me)
-        end
-        if not accept then
-            pending[key] = nil
-            return true, tr("The proposal was declined.", "Предложение отклонено.")
-        end
-        if confirmation ~= fingerprint(gift) then
-            return false, tr("Confirm this proposal with the button on its card.", "Подтверди предложение кнопкой на карточке.")
-        end
+    apply_deal = function(gift)
+        local key = gift.key
         local ok, why = can_transfer(gift)
         if not ok then
             if not actions.blocked then pending[key] = nil end
@@ -408,21 +470,23 @@ function gifts.install(deps)
             end
         end
         pending[key] = nil
+        moving[gift.id] = gift
         ok, why = pcall(function()
             if gift.kind == influence_kind then return influence.apply(gift) end
             return cm:transfer_region_to_faction(gift.region, gift.to)
         end)
         if not ok or why == false then
+            moving[gift.id] = nil
             if gift.kind == influence_kind then influence.cleanup(gift) end
             return false, tr("The game rejected the action.", "Игра отклонила действие.")
         end
         local success = (gift.kind == influence_kind and tr("Confederation concluded · ", "Конфедерация заключена · ")
             or tr("Settlement transferred · ", "Поселение передано · ")) .. details(gift)
         if completed(gift) then
+            moving[gift.id] = nil
             note(key, success)
             return true, success
         end
-        moving[gift.id] = gift
         cm:callback(function()
             moving[gift.id] = nil
             if gift.kind == influence_kind then influence.cleanup(gift) end
@@ -432,6 +496,22 @@ function gifts.install(deps)
             show(key)
         end, 1)
         return true, tr("Waiting for the game to confirm the result.", "Ожидаю подтверждения результата.")
+    end
+
+    ruler.settle = function(key, accept, me, confirmation)
+        local gift = on_table(key)
+        if not gift then
+            if confirmation then return false, tr("That offer has expired.", "Это предложение уже снято.") end
+            return stock_settle(key, accept, me)
+        end
+        if not accept then
+            pending[key] = nil
+            return true, tr("The proposal was declined.", "Предложение отклонено.")
+        end
+        if confirmation ~= fingerprint(gift) then
+            return false, tr("Confirm this proposal with the button on its card.", "Подтверди предложение кнопкой на карточке.")
+        end
+        return apply_deal(gift)
     end
 
     return { prepare = prepare, prompt = prompt, schema = schema, finish = finish, title = title }

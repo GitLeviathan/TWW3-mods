@@ -28,6 +28,8 @@ local ruler = { counterpart = "sisters", tick = function() end,
     end,
     offer_settlement_gift = function(key, region, recipient) submitted = {key, region, recipient} end,
 }
+local masked = false
+ruler.expansion_mask_active = function() return masked end
 local picker = panel.install({ ui = ui, ruler = ruler, cm = { turn_number = function() return turn end },
     state = { data = {} }, language = function() return "ru" end, fold = string.lower,
     core = { add_listener = function(_, _, _, predicate, callback)
@@ -38,7 +40,7 @@ local picker = panel.install({ ui = ui, ruler = ruler, cm = { turn_number = func
     end } })
 assert(ui.init())
 local prefix = "th_gift_"
-local function click(id) listener(prefix .. id) end
+local function click(id) listener(prefix .. id); ruler.tick() end
 local function part(id) return component(prefix .. id) end
 assert(part("open").visible and not part("picker").visible)
 click("open")
@@ -71,7 +73,12 @@ click("choice_1")
 turn = turn + 1
 click("send")
 assert(not submitted and not part("picker").visible)
-ruler.expansion_mask_active = function() return true end
+click("open")
+ui.field.text = "Гронд"
+listener("th_mask_toggle")
+assert(not part("picker").visible and not picker.consume_speak(), "Switching masks must release the search field before redrawing chat")
+assert(ui.field.text == "Черновик реплики" and ui.speak_btn.text == "Сказать")
+masked = true
 ruler.tick()
 assert(not part("open").visible)
-print("Gift picker: paging, search, review, submit, stale turn, and mask visibility passed")
+print("Gift picker: paging, search, review, submit, stale turn, and mask switching passed")
