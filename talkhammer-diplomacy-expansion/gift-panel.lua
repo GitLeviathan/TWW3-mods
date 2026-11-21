@@ -1,14 +1,14 @@
 local panel = {}
 local prefix = "th_gift_"
 local page_size = 8
-local control_ids = { "open", "header", "search", "filter", "previous", "next", "back", "send" }
+local control_ids = { "open", "header", "previous", "next", "back", "send" }
 
 function panel.install(deps)
     local ui, ruler, cm, state = deps.ui, deps.ruler, deps.cm, deps.state
     local components, root, selection, open_shown = {}, nil, nil, nil
     local function tr(en, ru) return deps.language() == "ru" and ru or en end
     local function available()
-        if ui.mode ~= "talk" or not ui.frame or not ruler.counterpart or ruler.accept_shown
+        if ui.mode ~= "talk" or not ui.frame or not ui.field or not ui.speak_btn or not ruler.counterpart or ruler.accept_shown
             or (ruler.expansion_mask_active and ruler.expansion_mask_active())
             or (ruler.awaiting and ruler.awaiting[ruler.counterpart]) then return false end
         local ok, visible = pcall(function() return ui.frame:Visible() end)
@@ -24,8 +24,17 @@ function panel.install(deps)
         control:SetVisible(label ~= nil)
     end
     local function close()
+        local draft = selection and selection.draft
         selection = nil
         if components.picker then pcall(function() components.picker:SetVisible(false) end) end
+        if draft then
+            pcall(function()
+                draft.field:SetStateText(draft.text)
+                draft.field:SetVisible(draft.field_visible)
+                draft.button:SetStateText(draft.caption)
+                draft.button:SetVisible(draft.button_visible)
+            end)
+        end
     end
     local function refresh()
         if not components.picker then return end
@@ -63,8 +72,6 @@ function panel.install(deps)
             if #choices == 0 then heading = heading .. "\n" .. tr("No matches", "Ничего не найдено") end
         end
         set("header", heading)
-        components.search:SetVisible(not review)
-        set("filter", not review and tr("Search", "Найти") or nil)
         set("previous", not review and selection.page > 1 and tr("Previous", "Назад ←") or nil)
         set("next", not review and selection.page < pages and tr("Next", "Далее →") or nil)
         set("back", step == "city" and tr("Cancel", "Отмена") or tr("Back", "Назад"))
@@ -74,14 +81,32 @@ function panel.install(deps)
     end
     local function choose_step(step, choices)
         selection.step, selection.choices, selection.page, selection.filter = step, choices, 1, ""
-        components.search:SetStateText("")
+        local searching = step ~= "review"
+        ui.field:SetStateText("")
+        ui.field:SetVisible(searching)
+        ui.speak_btn:SetStateText(tr("Search", "Найти"))
+        ui.speak_btn:SetVisible(searching)
         draw()
+    end
+    local function update_search()
+        if selection.step == "review" then return end
+        local raw = ui.field:GetStateText()
+        local query = type(raw) == "string" and raw:match("^%s*(.-)%s*$") or ""
+        if query ~= selection.filter then
+            selection.filter, selection.page = query, 1
+            draw()
+        end
     end
     local function click(id)
         if id == "open" then
             if not available() or not components.picker then return end
             local key = ruler.counterpart
-            selection = { key = key, turn = cm:turn_number(), campaign = state.data }
+            if ruler.show_conversation then ruler.show_conversation(key) end
+            selection = { key = key, turn = cm:turn_number(), campaign = state.data, draft = {
+                field = ui.field, button = ui.speak_btn, text = ui.field:GetStateText() or "",
+                caption = ui.speak_btn:GetStateText() or tr("Speak", "Сказать"),
+                field_visible = ui.field:Visible(), button_visible = ui.speak_btn:Visible(),
+            } }
             choose_step("city", ruler.gift_choices(key))
             return
         end
@@ -100,10 +125,6 @@ function panel.install(deps)
             close()
             refresh()
             ruler.offer_settlement_gift(key, region, recipient)
-        elseif id == "filter" and selection.step ~= "review" then
-            selection.filter = (components.search:GetStateText() or ""):match("^%s*(.-)%s*$")
-            selection.page = 1
-            draw()
         elseif id == "previous" or id == "next" then
             selection.page = selection.page + (id == "next" and 1 or -1)
             draw()
@@ -140,6 +161,7 @@ function panel.install(deps)
     ruler.tick = function(...)
         local result = tick(...)
         refresh()
+        if selection then update_search() end
         return result
     end
     ui.hide = function(...)
@@ -151,7 +173,11 @@ function panel.install(deps)
     end, function(context)
         click(context.string:sub(#prefix + 1))
     end, true)
-    return { close = close }
+    return { consume_speak = function()
+        if not selection then return false end
+        if current() then update_search() else close(); refresh() end
+        return true
+    end }
 end
 
 return panel

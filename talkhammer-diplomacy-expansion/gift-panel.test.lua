@@ -15,8 +15,10 @@ local function component(id)
 end
 local listener
 local ui = { panel = {}, frame = component("frame"), mode = "talk", deep_find = function(_, id) return component(id) end,
+    field = component("field"), speak_btn = component("speak"),
     init = function() return true end, hide = function() component("frame").visible = false end }
 ui.frame.visible = true
+ui.field.text, ui.speak_btn.text = "Черновик реплики", "Сказать"
 local ruler = { counterpart = "sisters", tick = function() end,
     gift_choices = function(_key, region)
         if region then return {{key = "kislev", label = "Ледяной двор"}, {key = "player", label = "Обманщики"}} end
@@ -26,7 +28,7 @@ local ruler = { counterpart = "sisters", tick = function() end,
     end,
     offer_settlement_gift = function(key, region, recipient) submitted = {key, region, recipient} end,
 }
-panel.install({ ui = ui, ruler = ruler, cm = { turn_number = function() return turn end },
+local picker = panel.install({ ui = ui, ruler = ruler, cm = { turn_number = function() return turn end },
     state = { data = {} }, language = function() return "ru" end, fold = string.lower,
     core = { add_listener = function(_, _, _, predicate, callback)
         listener = function(id)
@@ -43,14 +45,20 @@ click("open")
 assert(part("picker").visible and part("choice_1").text == "Форт Оберштир")
 click("next")
 assert(part("choice_1").text == "City 9")
-part("search").text = "City 3"
-click("filter")
+assert(ui.field.text == "" and ui.speak_btn.text == "Найти")
+ui.field.text = "City 3"
+assert(picker.consume_speak(), "Enter/Speak must stay in the picker")
 assert(part("choice_1").text == "City 3" and not part("choice_2").visible)
 click("back")
 assert(not part("picker").visible and not submitted)
+assert(ui.field.text == "Черновик реплики" and ui.speak_btn.text == "Сказать")
+assert(not picker.consume_speak(), "ordinary chat must retain its submit path")
 click("open")
 click("choice_1")
 assert(part("choice_1").text == "Ледяной двор")
+ui.field.text = "двор"
+ruler.tick()
+assert(part("choice_1").text == "Ледяной двор" and not part("choice_2").visible)
 click("choice_1")
 assert(part("send").visible and not submitted)
 click("send")

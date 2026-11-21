@@ -32,12 +32,10 @@ export function addGiftPanel(layout) {
   const picker = clone('th_frame', 'th_gift_picker', 20, 70, 1060, 300, true);
   const children = [
     clone('th_title', 'th_gift_header', 16, 6, 1028, 40),
-    clone('th_field', 'th_gift_search', 16, 47, 840, 34),
-    clone('th_accept', 'th_gift_filter', 870, 47, 174, 34),
   ];
   for (let index = 0; index < 8; index++) {
     children.push(clone('th_accept', `th_gift_choice_${index + 1}`,
-      16 + index % 2 * 520, 87 + Math.floor(index / 2) * 41, 508, 36));
+      16 + index % 2 * 520, 58 + Math.floor(index / 2) * 45, 508, 40));
   }
   children.push(
     clone('th_accept', 'th_gift_back', 16, 255, 154, 34),

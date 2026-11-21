@@ -12,6 +12,7 @@ const rulerPath = 'script\\talkhammer\\lib\\ruler.lua';
 const mainPath = 'script\\talkhammer\\main.lua';
 const layoutPath = 'ui\\talkhammer\\th_panel.twui.xml';
 const pickerPath = 'script\\talkhammer\\lib\\gift_panel.lua';
+const jsonPath = 'script\\talkhammer\\lib\\json.lua';
 const source = readEntry(base, rulerPath).toString('utf8');
 const module = (await readFile(new URL('./settlement-gifts.lua', import.meta.url), 'utf8')).trimEnd();
 const influence = (await readFile(new URL('./vassal-influence.lua', import.meta.url), 'utf8')).trimEnd();
@@ -34,7 +35,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.3")`);
+log("DIPLOMACY|Expansion test.4")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -57,7 +58,7 @@ if ui then
 end
 voices.load(function(ok)`);
 main = activate(main, /^on_speak = function\(\)$/m,
-  '$&\nif gift_picker then gift_picker.close() end');
+  '$&\nif gift_picker and gift_picker.consume_speak() then return end');
 
 let ruler = source;
 const askStart = ruler.indexOf('local function ask(');
@@ -138,9 +139,15 @@ return ruler
 `);
 
 const layout = addGiftPanel(readEntry(mainBase, layoutPath).toString('utf8'));
+let json = readEntry(stock, jsonPath).toString('utf8');
+json = activate(json, /^local SUB = string\.sub$/m, 'local SUB = byte_sub');
+json = activate(json, /^SUB = has_high\(s\) and byte_sub or string\.sub\r?\n/m, '');
+json = activate(json, /NUM_CHARS\[string\.sub\(chars, k, k\)\]/, 'NUM_CHARS[byte_sub(chars, k, k)]');
+json = activate(json, /elseif c == "-" or \(c >= "0" and c <= "9"\) then return parse_number\(s, i\)/,
+  'elseif c == "-" or c:match("^%d$") then return parse_number(s, i)');
 const entries = new Map([
   [mainPath, Buffer.from(main, 'utf8')], [rulerPath, Buffer.from(ruler, 'utf8')],
-  [layoutPath, Buffer.from(layout, 'utf8')], [pickerPath, picker],
+  [layoutPath, Buffer.from(layout, 'utf8')], [pickerPath, picker], [jsonPath, Buffer.from(json, 'utf8')],
 ]);
 const pack = moviePack(entries);
 pack.writeUInt32LE(3, 4); // Selectable Mod pack.
