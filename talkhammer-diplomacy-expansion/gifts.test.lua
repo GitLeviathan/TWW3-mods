@@ -1,6 +1,20 @@
 local directory = (... or ".") .. "/"
 local gifts = assert(loadfile(directory .. "settlement-gifts.lua"))()
 local influence = assert(loadfile(directory .. "vassal-influence.lua"))()
+local protect_output = assert(loadfile(directory .. "protected-output.lua"))()
+local normal_output, fallback_output
+local game_environment = { out = setmetatable({}, {__call = function(_, message) normal_output = message end}) }
+local safe_out, module_environment = protect_output(game_environment, function(why, message)
+    assert(why:find("attempt to perform arithmetic on a string value", 1, true))
+    fallback_output = message
+end)
+safe_out("normal request")
+assert(normal_output == "normal request")
+game_environment.out = function() error("attempt to perform arithmetic on a string value") end
+assert(pcall(module_environment.out, "queued after logger failure"))
+assert(fallback_output == "queued after logger failure")
+module_environment.TALKHAMMER_U8 = {}
+assert(module_environment.TALKHAMMER_U8 == game_environment.TALKHAMMER_U8)
 local names = { player = "Обманщики", sisters = "Сёстры Сумерек", kislev = "Ледяной двор", malus = "Хаг Греф" }
 local cities = { faraway = "Дальняя гавань", home = "Свой город" }
 local current_turn, moves, stock_accepts, stock_cases = 80, 0, 0, 0
@@ -121,6 +135,9 @@ assert(ruler.settle("sisters", true, {turn = current_turn}))
 assert(stock_accepts == 1)
 local donor = prepare()
 assert(donor.from == "sisters" and donor.to == "kislev" and donor.region == "faraway")
+local plain = prepare('дар: Дальняя гавань -> Ледяной двор')
+assert(plain.region == donor.region and plain.to == donor.to)
+donor = plain
 assert(controller.prompt(donor):find("Дальняя гавань", 1, true))
 local base_schema = { json_schema = { schema = {
     properties = { action = { enum = {"none", "gift_gold"} } }, required = {"action"},
@@ -197,6 +214,7 @@ assert(notes[#notes]:find("не подтвердила", 1, true) and city_owner
 assert(stock_cases > 0)
 
 local influence_text = "[конфедерация: Сёстры Сумерек -> Хаг Греф] Поддерживаю это соглашение."
+local plain_influence = "конфедерация: Сёстры Сумерек -> Хаг Греф"
 local function influence_with(key, agree)
     ruler.counterpart = key
     local deal, reason = controller.prepare(key, influence_text, "player", current_turn)
@@ -212,6 +230,8 @@ player_vassal = false
 invalid, message = controller.prepare("malus", influence_text, "player", current_turn)
 assert(not invalid and message)
 player_vassal = true
+local parsed_influence = assert(controller.prepare("sisters", plain_influence, "player", current_turn))
+assert(parsed_influence.to == "malus")
 influence_with("malus", true)
 assert(not ruler.table_action("malus", current_turn))
 influence_with("sisters", false)

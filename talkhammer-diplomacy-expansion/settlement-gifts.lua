@@ -9,8 +9,14 @@ local function trim(text)
 end
 
 local function fields(text, fold)
-    local command, region, receiver = text:match("^%s*%[([^:%]]+):%s*(.-)%s*%-%>%s*([^%]]-)%]%s*$")
+    local input = trim(text)
+    if input:sub(1, 1) == "[" and input:sub(-1) == "]" then
+        input = input:sub(2, -2)
+    end
+    local command, sequence = input:match("^([^:%[%]]+):%s*(.-)%s*$")
     if command and (fold(trim(command)) == "дар" or fold(trim(command)) == "gift") then
+        local region, receiver = sequence:match("^(.-)%s*%-%>%s*([^%[%]]-)%s*$")
+        if not region then return nil, nil, true end
         return trim(region), trim(receiver), true
     end
     if fold(text):match("^%s*%[дар%s*:") or fold(text):match("^%s*%[gift%s*:") then

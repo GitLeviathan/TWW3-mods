@@ -30,13 +30,23 @@ function influence.install(deps, helpers)
         return true
     end
 
+    local function parse_fields(command, value)
+        command = fold((command:match("^%s*(.-)%s*$")))
+        if command == "конфедерация" or command == "confederation" then
+            local absorbed, absorber = value:match("^%s*(.-)%s*%-%>%s*(.-)%s*$")
+            return absorbed, absorber, true
+        end
+    end
+
     local function parse(text)
+        local label, text_after_label = text:match("^%s*([^:%[%]]+):([^%[%]]*)$")
+        if label then
+            local absorbed, absorber, explicit = parse_fields(label, text_after_label)
+            if explicit then return absorbed, absorber, explicit end
+        end
         for command, value in text:gmatch("%[([^:%]]+):([^%]]*)%]") do
-            command = fold(command)
-            if command == "конфедерация" or command == "confederation" then
-                local absorbed, absorber = value:match("^%s*(.-)%s*%-%>%s*(.-)%s*$")
-                return absorbed, absorber, true
-            end
+            local absorbed, absorber, explicit = parse_fields(command, value)
+            if explicit then return absorbed, absorber, explicit end
         end
         return nil, nil, false
     end
