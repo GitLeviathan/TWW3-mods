@@ -61,6 +61,11 @@ function exposure.assess(pair, session, plan, allied)
         if clue then
             result.by_outcome[outcome] = clue
             result.clues[clue] = true
+            result.fresh = true
+        end
+        if (outcome == "confederate" or outcome == "vassalize" or outcome == "attack_third"
+            or outcome == "join_visitor_war") and session.attitude and session.attitude <= -25 then
+            result.high_stakes = true
         end
     end
     for clue, date in pairs(pair.clues or {}) do

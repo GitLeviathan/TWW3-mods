@@ -90,6 +90,7 @@ local state = {
     save = function() end,
 }
 local at_war = true
+local masked_attitude = -20
 local war_state_readable = true
 local applied_actions = {}
 local failed_outcome
@@ -107,7 +108,7 @@ end }
 local world = { keys = { "reikland", "kislev", "gelt" },
     factions = { reikland = { leader_subtype = "emp_karl_franz" }, kislev = { leader_subtype = "ksl_katarin", subculture = "emp" }, gelt = { subculture = "emp" }, reikland_enemy = {} },
     exists = function(key) return factions[key] or key == "reikland_enemy" end,
-    resolve = function(name) if name == "Enemy" then return "reikland_enemy" end end, attitude = function() return -60 end }
+    resolve = function(name) if name == "Enemy" then return "reikland_enemy" end end, attitude = function() return masked_attitude end }
 local orders = { at_war = function(a, b) if a == "reikland_enemy" or b == "reikland_enemy" then return wars[a .. "|" .. b] == true end; return at_war end }
 local function value(kind, key, field)
     context_reads = context_reads + 1
@@ -235,10 +236,31 @@ end
 local function mask_command(command)
     ruler.handle_command({ cmd = "mask", text = command })
 end
+local function dismiss_narration()
+    if queued and queued.request.response_format.json_schema.name == "changeling_mask_incident" then
+        reply(nil, "I have questions about this.")
+    end
+end
+local function insist()
+    dismiss_narration()
+    mask_command("insist")
+end
 local function assert_pair(action, from, to)
     assert(applied and applied[1] == action and applied[2] == from and applied[3] == to,
         "Diplomacy used the wrong outcome or pair")
 end
+
+local deceivers = { key = player, regions = 0 }
+local territorial_context = ruler.describe(deceivers, "gelt")
+assert(territorial_context:find("cult network", 1, true) and territorial_context:find("not transferable", 1, true),
+    "The ordinary dialogue omitted the Deceivers' campaign mechanics")
+assert(ruler.describe({ key = "gelt" }, "reikland") == "gelt", "The territorial rules leaked into mask diplomacy")
+local court_snapshot = { key = "gelt", faction = { region_list = function()
+    return { num_items = function() return 1 end, item_at = function()
+        return { name = function() return "gelt_capital" end }
+    end }
+end } }
+assert(ruler.describe(court_snapshot, player):find("Settlements currently owned: gelt_capital", 1, true))
 
 faction_reads = {}
 ruler.talk_to("gelt", "Let us sign a peace treaty.")
@@ -375,6 +397,7 @@ for _, outcome in ipairs({ "break_non_aggression", "break_trade", "break_militar
     ruler.talk_to("gelt", "Cancel this agreement.")
     assert(has_outcome(outcome), "Existing agreement cannot be cancelled: " .. outcome)
     reply(outcome)
+    if outcome == "break_non_aggression" then insist() end
 end
 assert_pair("break_military_access", "kislev", "gelt")
 assert(not pacts["gelt|kislev"] and not trades["gelt|kislev"] and not access["gelt|kislev"] and not access["kislev|gelt"])
@@ -450,12 +473,6 @@ local function negotiate(target, text, outcome)
     reply(outcome)
 end
 
-local function dismiss_narration()
-    if queued and queued.request.response_format.json_schema.name == "changeling_mask_incident" then
-        reply(nil, "I have questions about this.")
-    end
-end
-
 form, owner, turn, at_war = "emp_karl_franz", "reikland", 20, false
 absorbed.kislev, pacts["gelt|reikland"] = nil, nil
 state.data = {}
@@ -467,7 +484,11 @@ alliances["reikland|reikland_enemy"] = "military"
 for _ = 1, 2 do
     wars["gelt|reikland_enemy"], wars["reikland|reikland_enemy"] = false, false
     negotiate("gelt", "Attack my ally. [цель: Enemy]", "attack_third")
+    assert(not applied and last:find("Двор требует объяснений", 1, true), "A single strong clue did not trigger scrutiny")
     mask_command("confirm")
+    assert(not applied, "Confirmation skipped the explanation")
+    dismiss_narration()
+    mask_command("insist")
     assert_pair("war", "gelt", "reikland_enemy")
 end
 
@@ -510,6 +531,8 @@ local function prepare_peace_reversal(court)
     assert_pair("peace", owner, court)
     negotiate(court, "Sign a pact.", "non_aggression")
     negotiate(court, "Break the pact.", "break_non_aggression")
+    dismiss_narration()
+    mask_command("insist")
     assert_pair("break_non_aggression", court, owner)
     negotiate(court, "We declare war.", "declare_war")
     assert(not applied, "War after a recent peace did not pause on the second clue")
@@ -632,7 +655,7 @@ failed_outcome = nil
 alliances[owner .. "|reikland_enemy"] = "military"
 wars[owner .. "|reikland_enemy"], wars["gelt|reikland_enemy"] = false, false
 negotiate("gelt", "Attack our ally. [цель: Enemy]", "attack_third")
-mask_command("confirm")
+insist()
 assert_pair("war", "gelt", "reikland_enemy")
 trades["gelt|" .. owner] = true
 negotiate("gelt", "Cancel the trade agreement signed separately.", "break_trade")
@@ -664,7 +687,8 @@ turn, state.data, at_war = 70, {}, false
 alliances[owner .. "|reikland_enemy"] = "military"
 wars[owner .. "|reikland_enemy"], wars["gelt|reikland_enemy"] = false, false
 negotiate("gelt", "Attack my ally. [цель: Enemy]", "attack_third")
-mask_command("confirm")
+dismiss_narration()
+mask_command("insist")
 alliances["gelt|" .. owner], pacts["gelt|" .. owner] = "defensive", nil
 engine_accepts = false
 negotiate("gelt", "Upgrade our alliance and sign a pact.", { "alliance", "non_aggression" })
@@ -679,7 +703,8 @@ state.data, pacts["gelt|" .. owner] = {}, nil
 wars[owner .. "|reikland_enemy"], wars["gelt|reikland_enemy"] = false, false
 negotiate("gelt", "Sign a pact.", "non_aggression")
 negotiate("gelt", "Attack my ally. [цель: Enemy]", "attack_third")
-mask_command("confirm")
+dismiss_narration()
+mask_command("insist")
 access["gelt|" .. owner] = nil
 negotiate("gelt", "Cancel our pact and grant access.", { "military_access", "break_non_aggression" })
 assert(not applied)
@@ -707,7 +732,7 @@ ruler.show_conversation("gelt")
 ruler.tick()
 assert(native_draws == 0 and ui_portrait == "gelt-portrait" and ui_sub:find(owner, 1, true),
     "Opening a masked audience used the ordinary conversation view")
-assert(ui_attitude:find("-60", 1, true), "The portrait header omitted the attitude toward the masked faction")
+assert(ui_attitude:find("-20", 1, true), "The portrait header omitted the attitude toward the masked faction")
 assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: " .. owner,
     "The composer did not name the active speaker")
 ruler.show_conversation("bystander")
@@ -880,6 +905,7 @@ wars["gelt|reikland_enemy"], wars[owner .. "|reikland_enemy"] = false, false
 alliances[owner .. "|reikland_enemy"] = nil
 negotiate("gelt", "Sign a pact.", "non_aggression")
 negotiate("gelt", "Break the pact.", "break_non_aggression")
+insist()
 negotiate("gelt", "Attack Enemy. [цель: Enemy]", "attack_third")
 ruler.tick()
 assert(buttons.th_mask_insist.text == "Подтвердить")
@@ -974,6 +1000,7 @@ assert(not ui_ledger:find("105", 1, true) and not ui_ledger:find("military_ally"
 state.data, pacts["gelt|" .. owner] = {}, nil
 negotiate("gelt", "Sign a pact.", "non_aggression")
 negotiate("gelt", "Break the pact.", "break_non_aggression")
+insist()
 exposure.warn(state.data, "gelt", { summary_form }, "bystander", turn)
 ruler.talk_to("gelt", "Sign a pact.")
 ruler.tick()
@@ -1043,5 +1070,53 @@ negotiate("gelt", "Станьте нашими вассалами.", "vassalize"
 mask_command("confirm")
 assert_pair("vassal", owner, "gelt")
 assert(masters.gelt == owner and not masters[owner])
+
+state.data, at_war = {}, false
+masters.gelt, pacts["gelt|" .. owner] = nil, nil
+masked_attitude = -25
+negotiate("gelt", "Become our vassal.", "vassalize")
+dismiss_narration()
+ruler.tick()
+assert(not applied and buttons.th_mask_insist.text == "Настоять" and ui_ledger:find("Двор не доверяет", 1, true),
+    "A hostile court did not scrutinize the demand for submission")
+mask_command("withdraw")
+masked_attitude = -20
+
+local function cheat_command(text)
+    ruler.handle_command({ cmd = "cheat", text = text or "" })
+end
+assert(ruler.COMMANDS.cheat, "The slash command parser did not register /cheat")
+cheat_command()
+ruler.talk_to("gelt", "Sign a pact.")
+assert(queued.request.messages[1].content:find("forced to consent", 1, true))
+applied = nil
+reply("non_aggression")
+assert(not applied and not pacts["gelt|" .. owner], "A forced pact skipped confirmation")
+mask_command("confirm")
+assert_pair("non_aggression", "gelt", owner)
+ruler.talk_to("gelt", "Cancel the pact.")
+assert(not queued.request.messages[1].content:find("forced to consent", 1, true), "The cheat leaked to a second dialogue")
+reply("break_non_aggression")
+dismiss_narration()
+mask_command("withdraw")
+
+cheat_command()
+ruler.select("bystander")
+ruler.select("gelt")
+ruler.talk_to("gelt", "Hello.")
+assert(not queued.request.messages[1].content:find("forced to consent", 1, true), "The cheat survived a change of court")
+reply("none")
+
+cheat_command()
+mask_command("off")
+assert(not ruler.take_changeling_cheat("gelt"), "Changing speakers preserved the cheat")
+cheat_command()
+assert(ruler.take_changeling_cheat("gelt") and not ruler.take_changeling_cheat("gelt"), "Ordinary diplomacy did not consume the cheat once")
+cheat_command()
+cheat_command("off")
+assert(not ruler.take_changeling_cheat("gelt"), "Cancelling did not disarm the cheat")
+cheat_command()
+turn = turn + 1
+assert(not ruler.take_changeling_cheat("gelt"), "The cheat survived the end of the turn")
 
 print("Mask diplomacy tests passed")
