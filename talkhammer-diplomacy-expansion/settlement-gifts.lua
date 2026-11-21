@@ -170,8 +170,13 @@ function gifts.install(deps)
         return found, donor
     end
 
-    local function prepare(key, text, player, turn)
-        local subject, receiver, explicit = fields(text or "", fold)
+    local function prepare(key, text, player, turn, selection)
+        local subject, receiver, explicit
+        if selection then
+            subject, receiver, explicit = selection.region, selection.recipient, true
+        else
+            subject, receiver, explicit = fields(text or "", fold)
+        end
         local kind = gift_kind
         if not explicit then
             subject, receiver, explicit = influence.parse(text or "")
@@ -219,6 +224,55 @@ function gifts.install(deps)
         if not ok then return nil, why end
         requested[key] = gift
         return gift
+    end
+
+    local talk_to = ruler.talk_to
+    function ruler.gift_choices(counterpart, settlement)
+        local player = cm:get_local_faction_name(true)
+        local choices, seen = {}, {}
+        local function add(key, label)
+            if seen[key] then return end
+            seen[key] = true
+            choices[#choices + 1] = { key = key, label = label, order = fold(label) }
+        end
+        if settlement then
+            local donor = owner_of(settlement)
+            if donor == player then
+                if living_faction(counterpart) then add(counterpart, world.name_of(counterpart)) end
+            elseif donor == counterpart then
+                if living_faction(player) then add(player, world.name_of(player)) end
+                for _, key in ipairs(world.keys or {}) do
+                    if key ~= donor and not seen[key] and living_faction(key) then add(key, world.name_of(key)) end
+                end
+            end
+        else
+            for _, key in ipairs({ counterpart, player }) do
+                local faction = living_faction(key)
+                if faction then
+                    local regions = faction:region_list()
+                    for index = 0, regions:num_items() - 1 do
+                        local city = regions:item_at(index):name()
+                        local name = place_name(city)
+                        if key == player then name = name .. " · " .. world.name_of(player) end
+                        add(city, name)
+                    end
+                end
+            end
+        end
+        table.sort(choices, function(a, b)
+            if a.order == b.order then return a.key < b.key end
+            return a.order < b.order
+        end)
+        return choices
+    end
+
+    function ruler.offer_settlement_gift(counterpart, region, recipient)
+        if counterpart ~= ruler.counterpart or (ruler.expansion_mask_active and ruler.expansion_mask_active()) then return end
+        local mine = owner_of(region) == cm:get_local_faction_name(true)
+        local line = mine and tr("I offer «%s» as a gift to «%s».", "Предлагаю подарить поселение «%s» фракции «%s».")
+            or tr("Would you give «%s» to «%s» as a gift?", "Передайте поселение «%s» в дар фракции «%s».")
+        return talk_to(counterpart, line:format(place_name(region), world.name_of(recipient)),
+            { region = region, recipient = recipient })
     end
 
     local function prompt(gift)

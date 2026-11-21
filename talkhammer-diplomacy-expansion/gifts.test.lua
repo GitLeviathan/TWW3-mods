@@ -69,6 +69,10 @@ local ruler = {
     show_conversation = function() stock_cases = stock_cases + 1 end,
     publish_status = function() end,
 }
+local picked_request
+ruler.talk_to = function(key, line, selection)
+    picked_request = {key = key, line = line, selection = selection}
+end
 local cm = {
     get_faction = function(_, key) return faction_records[key] end,
     get_region = function(_, key) return region_records[key] end,
@@ -112,6 +116,14 @@ local deps = {
     influence = influence,
 }
 local controller = gifts.install(deps)
+assert(#ruler.gift_choices("sisters") == 2)
+assert(#ruler.gift_choices("sisters", "home") == 1)
+assert(ruler.gift_choices("sisters", "home")[1].key == "sisters")
+ruler.offer_settlement_gift("sisters", "faraway", "kislev")
+assert(picked_request.key == "sisters" and picked_request.selection.recipient == "kislev")
+assert(picked_request.line:find("Дальняя гавань", 1, true) and not picked_request.line:find("faraway", 1, true))
+local picked = assert(controller.prepare("sisters", "Обычная реплика", "player", current_turn, picked_request.selection))
+assert(picked.region == "faraway" and picked.to == "kislev")
 local sentence = 'Передайте поселение «Дальняя гавань» в дар фракции «Ледяной двор».'
 local function prepare(text)
     local deal, reason = controller.prepare("sisters", text or sentence, "player", current_turn)
