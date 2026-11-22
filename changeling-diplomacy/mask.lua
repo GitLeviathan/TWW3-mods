@@ -147,6 +147,7 @@ function mask.install(deps)
     local panel = deps.panel and deps.panel.new(deps)
     local draw_request, panel_notice, panel_state, button_action
     local active, pending, incident, cheat
+    local preview, preview_control, debug_ui
     local counterpart = ruler.counterpart
     local context_epoch = 0
     local equipped_subtype, refresh_error
@@ -155,6 +156,15 @@ function mask.install(deps)
     local function log(message)
         if out then out("TH|MASK|" .. message) end
     end
+
+    local function trace_ui(event, value)
+        if not debug_ui then return end
+        log("UI|" .. event .. " " .. value .. " | turn=" .. tostring(cm:turn_number())
+            .. " court=" .. tostring(ruler.counterpart) .. " preview=" .. (preview and preview.scene or "off"))
+    end
+
+    ruler.mask_trace_input = function(route) trace_ui("input", route) end
+    ruler.mask_preview_active = function() return preview ~= nil end
 
     local original_describe = ruler.describe
     ruler.describe = function(snap, toward)
@@ -1022,6 +1032,7 @@ function mask.install(deps)
     end
 
     ruler.talk_to = function(target, text)
+        if preview then return end
         observe_court()
         text = tostring(text or "")
         if ruler.parse_command then
@@ -1060,7 +1071,7 @@ function mask.install(deps)
             return report("Маска", { "Сделка ждёт решения. /mask confirm • /mask withdraw" })
         end
         if mode == "explain" and explanation == "" then
-            return report("Маска", { "Введи новое предложение и отправь кнопкой «Уточнить» или командой /mask explain." })
+            return report("Маска", { "Введи новое предложение и нажми «Отправить объяснение» или используй /mask explain." })
         end
         local session = check.session
         if session.envoy and mode == "insist" then
@@ -1101,6 +1112,7 @@ function mask.install(deps)
     ruler.COMMANDS.mask = true
     ruler.COMMANDS.cheat = true
     ruler.handle_command = function(command)
+        if preview and command.cmd ~= "mask" then return end
         if command.cmd == "cheat" then
             observe_court()
             if cm:get_local_faction_name(true) ~= changeling then
@@ -1145,6 +1157,25 @@ function mask.install(deps)
         while split <= #text and not is_space(string.byte(text, split)) do split = split + 1 end
         local mode = u8.lower(u8.sub(text, 1, split - 1))
         local argument = trim_line(u8.sub(text, split + 1))
+        if mode == "debug" then
+            if argument ~= "" and argument ~= "on" and argument ~= "off" then
+                if not preview then return report("Маска", { "Используй /mask debug или /mask debug off." }) end
+                return
+            end
+            if argument == "off" then trace_ui("debug", "off") end
+            debug_ui = argument ~= "off"
+            if debug_ui then trace_ui("debug", "on") end
+            if not preview then
+                return report("Маска", { debug_ui and "Диагностика включена. Ищи TH|MASK|UI| в журнале игры."
+                    or "Диагностика выключена." })
+            end
+            return
+        end
+        if mode == "preview" then
+            if preview_control then return preview_control(argument) end
+            return report("Маска", { "Панель предпросмотра недоступна." })
+        end
+        if preview then return end
         if mode == "on" or mode == "off" then
             if mode == "off" or not can_use_mask() then reset_context() end
             state.set_setting(setting_key, mode == "on")
@@ -1179,8 +1210,129 @@ function mask.install(deps)
     if panel then
         local original_show, original_tick = ruler.show_conversation, ruler.tick
         local original_accept, original_news = ruler.press_accept, ruler.show_news
+        local ui = deps.ui
+        local scenes = { "direct", "talk", "deal", "check", "envoy", "exposed", "complete" }
+        local function preview_current()
+            return preview and preview.campaign == state.data and preview.turn == cm:turn_number()
+                and preview.target == ruler.counterpart and preview.epoch == context_epoch
+        end
+
+        local function close_preview(redraw)
+            if not preview then return end
+            local ended, restore = preview, preview_current()
+            trace_ui("preview", "close")
+            preview, button_action = nil, nil
+            ui.pending_accept = nil
+            panel.end_preview(ended.draft, restore)
+            if redraw and ruler.counterpart then ruler.show_conversation(ruler.counterpart)
+            elseif redraw and ui.hide then ui.hide() end
+        end
+
+        local function draw_preview()
+            local scene = preview.scene
+            local check = scene == "check" or scene == "envoy"
+            local direct = scene == "direct"
+            local line = check and "Я не откажусь от власти, пока ты не объяснишь, почему изменились условия."
+                or "Хар Ганет согласен обсудить твои условия."
+            local history = { "Предпросмотр · учебный разговор",
+                { text = "Хар Ганет сохранит владения и получит защиту Хаг Грефа.", reply = line } }
+            local data = {
+                preview = true, masked = not direct,
+                identity = direct and "Перевёртыш" or "Малус Тёмный Клинок",
+                faction = direct and "Обманщики" or "Хаг Греф",
+                attitude = scene == "deal" and 28 or -32,
+                history = history, detail = { "Торговое соглашение действует." }, notice = {},
+            }
+            if scene == "deal" or check then
+                data.pending = { checking = check, line = line }
+                data.deal = "Конфедерация\nХар Ганет → Хаг Греф"
+                if check then data.detail = { "Двор требует объяснить расхождение с прежними договорённостями." } end
+                if scene == "envoy" then
+                    data.envoy_turn = preview.turn + 2
+                    data.detail[#data.detail + 1] = "Посланник вернётся на ходу " .. data.envoy_turn .. "."
+                end
+            elseif scene == "exposed" then
+                data.blocked = preview.turn + 5
+                history[#history + 1] = "Облик раскрыт. Сделка отменена."
+                data.detail = { "Двор сверил личность с настоящим правителем." }
+            elseif scene == "complete" then
+                history[#history + 1] = "Конфедерация заключена · Хар Ганет вошёл в Хаг Греф."
+            end
+            if preview.notice then data.notice[1] = preview.notice end
+            trace_ui("preview", scene)
+            return panel.render(data)
+        end
+
+        preview_control = function(argument)
+            if argument == "off" then return close_preview(true) end
+            local scene = argument ~= "" and argument or "talk"
+            local known
+            for _, item in ipairs(scenes) do
+                if item == scene then known = true; break end
+            end
+            if not known then
+                local help = "Режимы: direct, talk, deal, check, envoy, exposed, complete, off."
+                if preview then preview.notice = help; return draw_preview() end
+                return report("Маска", { help })
+            end
+            if not preview then
+                if active or (ruler.awaiting and ruler.awaiting[ruler.counterpart]) then
+                    return report("Маска", { "Дождись ответа собеседника, затем открой предпросмотр." })
+                end
+                local draft = panel.begin_preview()
+                if not draft then return report("Маска", { "Не удалось открыть предпросмотр." }) end
+                button_action, draw_request = nil, nil
+                ui.pending_accept = nil
+                preview = { target = ruler.counterpart, turn = cm:turn_number(), campaign = state.data,
+                    epoch = context_epoch, draft = draft }
+            end
+            preview.scene, preview.notice = scene, nil
+            local ok, visible = pcall(draw_preview)
+            if not (ok and visible) then
+                log("UI|preview failed: " .. tostring(visible))
+                close_preview(true)
+            end
+        end
+
+        local function preview_action(mode)
+            if not preview_current() then return close_preview(true) end
+            local scene = preview.scene
+            if mode == "preview_exit" then return close_preview(true) end
+            if mode == "preview_next" then
+                for index, item in ipairs(scenes) do
+                    if item == scene then return preview_control(scenes[index % #scenes + 1]) end
+                end
+            elseif mode == "toggle" then
+                return preview_control(scene == "direct" and "talk" or "direct")
+            elseif mode == "insist" then
+                return preview_control(scene == "deal" and "complete" or "envoy")
+            elseif mode == "withdraw" then
+                preview.scene = "talk"
+                preview.notice = "Учебное предложение отозвано."
+            elseif mode == "explain" then
+                if trim_line(panel.take_text()) == "" then
+                    preview.notice = "Введи учебное объяснение."
+                else
+                    preview.scene = "talk"
+                    preview.notice = "Двор принял учебное объяснение."
+                end
+            end
+            return draw_preview()
+        end
+
+        if ui.hide then
+            local original_hide = ui.hide
+            ui.hide = function(...)
+                close_preview(false)
+                return original_hide(...)
+            end
+        end
 
         ruler.show_conversation = function(target, fallback)
+            if preview then
+                if preview_current() then return end
+                close_preview(false)
+            end
             local enabled = can_use_mask()
             if panel.ready() and enabled and ruler.counterpart then
                 local form, reason = selected_form()
@@ -1193,12 +1345,14 @@ function mask.install(deps)
             end
             panel_state, draw_request = nil, nil
             panel.release_speak()
+            trace_ui("draw", "direct")
             local result = original_show(target, fallback)
             panel.controls(cm:get_local_faction_name(true) == changeling, enabled, false)
             return result
         end
 
         ruler.press_accept = function(...)
+            if preview then return end
             local shown = ruler.accept_shown
             if draw_request or panel_state or (shown and shown.key ~= ruler.counterpart) then
                 return panel.hide_accept()
@@ -1207,6 +1361,20 @@ function mask.install(deps)
         end
 
         ruler.mask_speak_ready = function()
+            trace_ui("input", preview and "preview" or "conversation")
+            if preview then
+                if not preview_current() then close_preview(true); return false end
+                local typed = trim_line(panel.take_text())
+                local command, argument
+                if ruler.parse_command then command, argument = ruler.parse_command(typed) end
+                if command == "mask" then
+                    ruler.handle_command({ cmd = "mask", text = argument })
+                elseif typed ~= "" then
+                    preview.notice = "Учебная реплика принята."
+                    draw_preview()
+                end
+                return false
+            end
             if panel.in_news() then return true end
             observe_court()
             if draw_request then return false end
@@ -1216,6 +1384,7 @@ function mask.install(deps)
 
         if original_news then
             ruler.show_news = function(...)
+                if preview then return end
                 draw_request = nil
                 panel.release_speak()
                 local result = original_news(...)
@@ -1259,6 +1428,7 @@ function mask.install(deps)
             end
             panel_state = { target = target, turn = turn, campaign = state.data, blocked = deps.actions.blocked,
                 epoch = context_epoch, pending = pending }
+            trace_ui("draw", blocked and "exposed" or checking and "check" or pending and "deal" or "talk")
             local history_shown, detail_shown = panel.render({
                 target = target, identity = identity, attitude = attitude, history = history, detail = detail or {},
                 faction = form and label(form.faction), envoy_turn = checking and pending.session.envoy and pending.session.envoy.returns,
@@ -1278,7 +1448,14 @@ function mask.install(deps)
             local result = original_tick(...)
             local action = button_action
             button_action = nil
-            if action and ruler.counterpart == action.target and panel.command(action.id) == action.mode then
+            if preview then
+                if not preview_current() or not panel.visible() then close_preview(panel.visible())
+                elseif action and action.preview == preview and panel.command(action.id) == action.mode then
+                    preview_action(action.mode)
+                end
+                return result
+            end
+            if action and not action.preview and ruler.counterpart == action.target and panel.command(action.id) == action.mode then
                 if action.mode == "toggle" then
                     ruler.handle_command({ cmd = "mask", text = can_use_mask() and "off" or "on" })
                 elseif pending and pending == action.check and session_is_current(pending.session) and not deps.actions.blocked then
@@ -1304,8 +1481,11 @@ function mask.install(deps)
             function(context) return panel.command(context.string) ~= nil end,
             function(context)
                 button_action = { id = context.string, mode = panel.command(context.string),
-                    target = ruler.counterpart, check = panel_state and panel_state.pending }
+                    target = ruler.counterpart, check = panel_state and panel_state.pending, preview = preview }
             end, true)
+        core:add_listener("THMaskPanelTrace", "ComponentLClickUp", function(context)
+            return debug_ui and type(context.string) == "string" and context.string:match("^th_") ~= nil
+        end, function(context) trace_ui("click", context.string) end, true)
     end
 
     -- Reading CCO form data while the diplomacy panel is handling a click can

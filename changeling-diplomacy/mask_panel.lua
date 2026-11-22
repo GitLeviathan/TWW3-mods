@@ -4,6 +4,8 @@ local buttons = {
     explain = "th_mask_explain",
     withdraw = "th_mask_withdraw",
     insist = "th_mask_insist",
+    preview_next = "th_mask_preview_next",
+    preview_exit = "th_mask_preview_exit",
 }
 local labels = { "regard", "status", "deal_heading", "ledger_heading", "hint" }
 
@@ -67,7 +69,7 @@ function panel.new(deps)
         pcall(function() button:SetVisible(true) end)
     end
 
-    function view.controls(available, enabled, decision)
+    function view.controls(available, enabled, decision, preview)
         if not decision then
             for _, name in ipairs(labels) do set_label(name) end
             use_header(false)
@@ -78,6 +80,8 @@ function panel.new(deps)
         set_button("explain", checking and "Отправить объяснение" or nil)
         set_button("withdraw", checking and "Отозвать предложение" or (decision == "confirm" and "Отказаться" or nil))
         set_button("insist", decision == "check" and "Настоять" or (decision == "confirm" and "Подтвердить" or nil))
+        set_button("preview_next", preview and "Далее" or nil)
+        set_button("preview_exit", preview and "Выйти" or nil)
     end
 
     function view.command(id)
@@ -90,6 +94,27 @@ function panel.new(deps)
     function view.take_text()
         if ui.compose_take then return ui.compose_take() end
         return ""
+    end
+
+    function view.begin_preview()
+        if not ui.init() then return end
+        local draft = { field = ui.field, compose = ui.compose }
+        if draft.field then
+            local ok, text = pcall(function() return draft.field:GetStateText() end)
+            if not ok then return end
+            if not pcall(function() draft.field:SetStateText("") end) then return end
+            draft.text = text
+        end
+        ui.compose = ""
+        return draft
+    end
+
+    function view.end_preview(draft, restore)
+        view.controls(false)
+        ui.compose = restore and draft.compose or ""
+        if draft.field and draft.field == ui.field then
+            pcall(function() draft.field:SetStateText(restore and draft.text or "") end)
+        end
     end
 
     function view.hide_accept()
@@ -145,7 +170,7 @@ function panel.new(deps)
     end
 
     function view.render(data)
-        local label = ruler.label_for(data.target)
+        local label = data.preview and "Ведьма Хелеброн" or ruler.label_for(data.target)
         local checking = data.pending and data.pending.checking
         local envoy_turn = data.envoy_turn
         local has_deal = ui.set_deal and (not ui.has_deal or ui.has_deal())
@@ -176,9 +201,13 @@ function panel.new(deps)
         end
 
         ui.mode = "talk"
-        view.hide_accept()
+        if data.preview then
+            if ui.set_accept then ui.set_accept(nil) end
+        else
+            view.hide_accept()
+        end
         local history_shown = ui.show_history("", lines, label)
-        if ruler.update_news_label then ruler.update_news_label() end
+        if not data.preview and ruler.update_news_label then ruler.update_news_label() end
         if ui.set_sub then
             local identity = data.identity
             if identity and data.faction and not identity:find(data.faction, 1, true) then
@@ -186,7 +215,10 @@ function panel.new(deps)
             end
             ui.set_sub(identity and ("От имени: " .. identity) or "Выбери облик правителя")
         end
-        if ruler.header_facts and ui.set_image then
+        if data.preview and ui.set_image then
+            ui.set_image("crest")
+            ui.set_image("portrait")
+        elseif ruler.header_facts and ui.set_image then
             local ok, facts = pcall(ruler.header_facts, data.target)
             facts = ok and facts or {}
             ui.set_image("crest", facts.crest)
@@ -195,7 +227,8 @@ function panel.new(deps)
         local status = data.blocked and ("Облик раскрыт · сделки с хода " .. data.blocked)
             or (envoy_turn and ("Посланник в пути · ответ на ходу " .. envoy_turn))
             or (checking and "Двор требует объяснений") or (data.pending and "Ожидает подтверждения") or nil
-        view.controls(true, true, data.pending and (envoy_turn and "envoy" or checking and "check" or "confirm") or "talk")
+        view.controls(true, data.masked ~= false,
+            data.pending and (envoy_turn and "envoy" or checking and "check" or "confirm") or "talk", data.preview)
         use_header(components.regard ~= nil)
         if components.regard then
             set_label("regard", data.faction and ("Отношение к " .. data.faction .. " · " .. tostring(data.attitude or "—")))

@@ -24,6 +24,34 @@ function skin(component, texture, margin) {
   return margin ? withTexture.replace(/margin="[^"]+"/, 'margin="' + margin + '"') : withTexture;
 }
 
+export function verifyMaskLayout(layout) {
+  if (!layout.includes('id="th_mask_toggle"')) return;
+  const controls = [
+    'th_mask_toggle', 'th_mask_withdraw', 'th_mask_insist', 'th_mask_explain', 'th_speak',
+    'th_mask_preview_next', 'th_mask_preview_exit',
+  ];
+  if (layout.includes('id="th_gift_open"')) controls.push('th_gift_open');
+  const labels = ['th_mask_regard', 'th_mask_status', 'th_mask_hint', 'th_mask_deal_heading', 'th_mask_ledger_heading'];
+  const bounds = [];
+  for (const id of [...controls, ...labels]) {
+    const component = definition(layout, id);
+    const gid = component.match(/this="([^"]+)"/)[1];
+    assert.equal(layout.split('<' + id + ' this="' + gid + '"/>').length, 2, 'Invalid layout link: ' + id);
+    const [x, y] = component.match(/offset="([^"]+)"/)[1].split(',').map(Number);
+    const [w, h] = ['width', 'height'].map(name => Number(component.match(new RegExp('\\b' + name + '="(\\d+)"'))[1]));
+    assert(x >= 0 && y >= 0 && x + w <= 1100 && y + h <= 500, 'Panel component outside frame: ' + id);
+    const interactive = controls.includes(id);
+    assert(component.includes('interactive="' + String(interactive) + '"'), 'Invalid input state: ' + id);
+    if (interactive) bounds.push({ id, x, y, w, h });
+  }
+  for (const [index, a] of bounds.entries()) {
+    for (const b of bounds.slice(index + 1)) {
+      assert(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y,
+        'Overlapping TalkHammer buttons: ' + a.id + ' and ' + b.id);
+    }
+  }
+}
+
 export function styleMaskLayout(source) {
   let layout = source;
   function remove(id) {
@@ -69,9 +97,16 @@ export function styleMaskLayout(source) {
   add('th_sub', 'th_mask_status', 604, 34, 304, 24,
     component => component.replace('#A99F89FF', '#FFE9B0FF'));
   add('th_sub', 'th_mask_hint', 20, 427, 835, 23);
+  const smallAction = component => skin(component, buttonSkin, '0.00,22.00,0.00,22.00')
+    .replace('textyoffset="6.00,6.00"', 'textyoffset="2.00,2.00"')
+    .replace('interactive="false"', 'interactive="true"');
+  add('th_att', 'th_mask_preview_next', 924, 39, 76, 24, smallAction);
+  add('th_att', 'th_mask_preview_exit', 1006, 39, 76, 24, smallAction);
 
   const links = added.map(({id, guid}) => '<' + id + ' this="' + guid + '"/>').join('\n');
   assert.equal(layout.split('</th_frame>').length, 3, 'Expected frame in hierarchy and components');
-  return layout.replace('</th_frame>', () => links + '\n</th_frame>')
+  const styled = layout.replace('</th_frame>', () => links + '\n</th_frame>')
     .replace('</components>', () => added.map(({xml}) => xml).join('\n') + '\n</components>');
+  verifyMaskLayout(styled);
+  return styled;
 }

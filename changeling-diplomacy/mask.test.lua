@@ -13,10 +13,12 @@ local ledger_ok = true
 local ui_sub, ui_ledger, ui_deal, ui_accept, ui_portrait, ui_lines
 local buttons = {}
 for _, id in ipairs({ "th_mask_regard", "th_mask_status", "th_mask_deal_heading", "th_mask_ledger_heading",
-    "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist", "speak" }) do
+    "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist",
+    "th_mask_preview_next", "th_mask_preview_exit", "speak" }) do
     buttons[id] = {
         SetVisible = function(self, value) self.visible = value end,
         SetStateText = function(self, value) self.text = value end,
+        GetStateText = function(self) return self.text end,
         Visible = function(self) return self.visible end,
     }
 end
@@ -1207,6 +1209,49 @@ do
     ruler.tick()
     assert(not ui_ledger:find("Облик раскрыт", 1, true) and not buttons.th_mask_withdraw.visible
         and ui_lines:find("Посланник не смог", 1, true), "A court obtained a witness after losing contact")
+end
+
+do
+    local before, ordinary_before, accepts_before, setting_before = state.data, ordinary, native_accepts, settings.changeling_mask_enabled
+    local field = buttons.speak
+    field.text = "draft to preserve"
+    ui.field, ui.compose = field, "cached draft"
+    ruler.accept_shown = { key = "gelt" }
+    mask_command("preview deal")
+    ruler.tick()
+    assert(ruler.mask_preview_active() and ui_lines:find("Предпросмотр", 1, true)
+        and buttons.th_mask_preview_next.visible)
+    local real_accept = ruler.accept_shown
+    ruler.press_accept()
+    click("insist")
+    assert(ui_lines:find("Конфедерация заключена", 1, true) and ruler.accept_shown == real_accept)
+    ruler.talk_to("gelt", "Declare war.")
+    ruler.handle_command({ cmd = "accept" })
+    assert(ordinary == ordinary_before and native_accepts == accepts_before and not queued and not applied)
+    assert(settings.changeling_mask_enabled == setting_before and state.data == before and not ruler.mask_speak_ready())
+    click("preview_exit")
+    assert(not ruler.mask_preview_active() and field.text == "draft to preserve" and ui.compose == "cached draft")
+
+    mask_command("preview check")
+    click("preview_next")
+    assert(ruler.mask_preview_active() and ui_ledger:find("Посланник вернётся", 1, true))
+    field.text = "test-only draft"
+    turn = turn + 1
+    ruler.tick()
+    assert(not ruler.mask_preview_active() and field.text == "" and ui.compose == "",
+        "A changed turn must discard preview input before returning to diplomacy")
+
+    local original_out = out
+    local traces = {}
+    out = function(line) traces[#traces + 1] = line end
+    mask_command("debug")
+    dispatch("ComponentLClickUp", "th_gift_open")
+    ruler.mask_trace_input("gift_search")
+    mask_command("debug off")
+    local trace = table.concat(traces, "\n")
+    out = original_out
+    assert(trace:find("UI|click th_gift_open", 1, true) and trace:find("UI|input gift_search", 1, true))
+    assert(not trace:find("draft to preserve", 1, true))
 end
 
 print("Mask diplomacy tests passed")
