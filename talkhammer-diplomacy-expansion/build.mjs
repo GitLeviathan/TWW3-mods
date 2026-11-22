@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { moviePack, readEntry } from '../mod-tools/pack.mjs';
 import { addGiftPanel } from './gift-layout.mjs';
+import { verifyMaskLayout } from '../changeling-diplomacy/mask-layout.mjs';
 
 const stock = 'D:/Steam/steamapps/workshop/content/1142710/3808547073/talkhammer.pack';
 const defaultOutput = fileURLToPath(new URL('./00_talkhammer_diplomacy_expansion.pack', import.meta.url));
@@ -42,15 +43,16 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.7")`);
+log("DIPLOMACY|Expansion test.8")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
   main = activate(main, /^        if not ok then log\("MASK\|install failed: " \.\. tostring\(error\)\) end$/m, `$&
         if ok then
             ruler.expansion_mask_active = function()
-                return cm:get_local_faction_name(true) == "wh3_dlc24_tze_the_deceivers"
-                    and state.setting("changeling_mask_enabled", true)
+                return (ruler.mask_preview_active and ruler.mask_preview_active())
+                    or (cm:get_local_faction_name(true) == "wh3_dlc24_tze_the_deceivers"
+                        and state.setting("changeling_mask_enabled", true))
             end
         end`);
 }
@@ -66,7 +68,9 @@ if ui then
 end
 voices.load(function(ok)`);
 main = activate(main, /^on_speak = function\(\)$/m,
-  '$&\nif gift_picker and gift_picker.consume_speak() then return end');
+  '$&\nif gift_picker and gift_picker.consume_speak() then\n'
+  + '    if ruler.mask_trace_input then ruler.mask_trace_input("gift_search") end\n'
+  + '    return\nend');
 
 let ruler = source;
 const askStart = ruler.indexOf('local function ask(');
@@ -215,6 +219,7 @@ return ruler
 `);
 
 const layout = addGiftPanel(readEntry(mainBase, layoutPath).toString('utf8'));
+verifyMaskLayout(layout);
 let json = readEntry(stock, jsonPath).toString('utf8');
 json = activate(json, /^local SUB = string\.sub$/m, 'local SUB = byte_sub');
 json = activate(json, /^SUB = has_high\(s\) and byte_sub or string\.sub\r?\n/m, '');
