@@ -46,7 +46,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.13")`);
+log("DIPLOMACY|Expansion test.14")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -149,10 +149,15 @@ local natural = (function()
 ${natural}
 end)()
 ${services.join('\n')}
-local function ask_envoy(key, prompt, reply)
+local function ask_envoy(key, prompt, reply, correspondence)
     if not p2 or not p2.post or not p2.strict_format then return false end
     local language = TALKHAMMER_LANG and TALKHAMMER_LANG.code == "ru" and "Russian" or "the current interface language"
     local profile = state.character_of and state.character_of(key)
+    local recent
+    if correspondence and chronicle and chronicle.text then
+        local ok, text = pcall(chronicle.text, key)
+        if ok and type(text) == "string" and text ~= "" then recent = text end
+    end
     local snapshot = ruler.snapshot(key)
     local player = cm:get_local_faction_name(true)
     local preferences = type(slaanesh_stage) == "function" and slaanesh_stage(cm, json, log, key) or nil
@@ -164,6 +169,7 @@ local function ask_envoy(key, prompt, reply)
                 .. " Express conditions or refusal honestly. No deal or war has happened just because you answer."
                 .. (type(profile) == "string" and "\\n" .. profile or "")
                 .. (snapshot and snapshot.ok and "\\n" .. ruler.describe(snapshot, player) or "")
+                .. (recent and "\\nConfirmed campaign events:\\n" .. recent or "")
                 .. (preferences and "\\n" .. preferences or "")
                 .. "\\nReturn one short line, a verdict of accept/decline/counter, and an integer gold amount."
                 .. " Only a permitted exact gold payment belongs in gold. Otherwise set gold to zero." },

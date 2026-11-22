@@ -6,6 +6,10 @@ local gift_words = { ["подарите"] = true, ["подарить"] = true, [
 local titles = { ["царица"] = true, ["ведьма"] = true, ["король"] = true, ["королева"] = true,
     ["лорд"] = true, ["леди"] = true, ["император"] = true, ["герцог"] = true,
     crone = true, tsarina = true, king = true, queen = true, lord = true, lady = true, emperor = true, duke = true }
+local ruler_aliases = {
+    wh2_dlc10_def_crone_hellebron = { "Хелеброн", "Хеллеброн", "Hellebron" },
+    wh2_main_def_morathi = { "Морати", "Morathi" },
+}
 
 local function trim(text)
     return (text or ""):match("^%s*(.-)%s*$")
@@ -194,11 +198,8 @@ function gifts.install(deps)
             end
         end
         local leader = faction:faction_leader()
-        if valid(leader) and leader:character_subtype_key() == "wh2_dlc10_def_crone_hellebron" then
-            labels[#labels + 1] = "Хелеброн"
-            labels[#labels + 1] = "Хеллеброн"
-            labels[#labels + 1] = "Hellebron"
-        end
+        local aliases = valid(leader) and ruler_aliases[leader:character_subtype_key()]
+        for _, alias in ipairs(aliases or {}) do labels[#labels + 1] = alias end
         if faction_key == player then
             labels[#labels + 1] = "мне"
             labels[#labels + 1] = "me"
@@ -318,20 +319,23 @@ function gifts.install(deps)
     end
 
     local queued_reports
-    local function report(key, text)
+    local function report(key, text, other)
         if queued_reports then
-            queued_reports[#queued_reports + 1] = { key, text }
+            queued_reports[#queued_reports + 1] = { key, text, other }
             return
         end
         local turn = cm:turn_number()
-        for line in text:gmatch("[^\n]+") do state.remember(key, turn, line, "ruler") end
-        if ruler.news_add then ruler.news_add(turn, text, "audience", {key}, true) end
+        for line in text:gmatch("[^\n]+") do
+            state.remember(key, turn, line, "ruler")
+            if other then state.remember(other, turn, line, "ruler") end
+        end
+        if ruler.news_add then ruler.news_add(turn, text, "audience", {key, other}, true) end
         local ok, visible = pcall(deps.is_open)
-        if ok and visible and direct() then show(key) end
+        if ok and visible and direct() then show(ruler.counterpart == other and other or key) end
     end
     local resolve_named_faction, resolve_named_region = named_resolvers()
     local api = { direct = direct, resolve_faction = resolve_named_faction, resolve_region = resolve_named_region,
-        tr = tr, live = living_faction, remember = note, report = report, ask = deps.ask_envoy,
+        tr = tr, live = living_faction, remember = note, report = report, ask = deps.ask_envoy, label_ruler = ruler.label_for,
         place_name = place_name, owner_of = owner_of, occupied = occupied }
     local negotiation = deps.negotiation and deps.negotiation.install(deps, api)
     local council = deps.council and deps.council.install(deps, api)
@@ -352,7 +356,7 @@ function gifts.install(deps)
         if not handled then return false end
         state.remember(key, turn, text, "you")
         if line then report(key, line) end
-        for _, entry in ipairs(buffered) do report(entry[1], entry[2]) end
+        for _, entry in ipairs(buffered) do report(entry[1], entry[2], entry[3]) end
         return true
     end
 

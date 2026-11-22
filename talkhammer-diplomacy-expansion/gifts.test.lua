@@ -344,6 +344,42 @@ assert(moves == original_moves + 1 and city_owners.grond == "har_ganeth")
 assert(not ruler.table_action("sisters", current_turn))
 assert(not controller.finish(order, { line = "Повтор.", gift_agreed = true }))
 assert(moves == original_moves + 1)
+
+-- A renamed character still resolves by their current subtype, and both courts keep the exchange.
+names.morathi = "Культ удовольствий"
+faction_records.morathi = {
+    is_null_interface = function() return false end, is_dead = function() return false end,
+    is_human = function() return false end,
+    faction_leader = function()
+        return { is_null_interface = function() return false end,
+            character_subtype_key = function() return "wh2_main_def_morathi" end }
+    end,
+}
+deps.world.keys[#deps.world.keys + 1] = "morathi"
+deps.world.leader_name = function(key) return key == "morathi" and "Whorathi" or leader_name(key) end
+local history, news, replies = {}, {}, {}
+deps.state.remember = function(key, _, line)
+    history[key] = history[key] or {}
+    history[key][#history[key] + 1] = line
+end
+ruler.news_add = function(_, text, _, keys) news[#news + 1] = { text = text, keys = keys } end
+deps.ask_envoy = function(who, _, receive)
+    replies[#replies + 1] = { who = who, receive = receive }
+    return true
+end
+deps.negotiation = assert(loadfile(directory .. "negotiation.lua"))()
+local diplomacy = gifts.install(deps)
+assert(diplomacy.handle("sisters", "поблагодарите Морати за Гронд", "player", current_turn))
+assert(replies[1].who == "sisters")
+replies[1].receive("Благодарим за Гронд.", { verdict = "accept", gold = 0 })
+assert(replies[2].who == "morathi")
+replies[2].receive("Приму вашу благодарность.", { verdict = "accept", gold = 0 })
+for _, key in ipairs({ "sisters", "morathi" }) do
+    local transcript = table.concat(history[key], "\n")
+    assert(transcript:find("Благодарим за Гронд.", 1, true) and transcript:find("Приму вашу благодарность.", 1, true))
+end
+assert(news[#news].keys[1] == "sisters" and news[#news].keys[2] == "morathi" and moves == original_moves + 1)
 print("Natural gift: named ruler, ambiguity, refusal, stale ownership, and single automatic transfer passed")
 print("Settlement gifts: consent, confirmation, live ownership, expiry, and delayed transfer passed")
 print("Vassal influence: both parties, refusal, eligibility, direction, and confirmation passed")
+print("Correspondence: renamed recipient, shared court histories, and one result in the news passed")

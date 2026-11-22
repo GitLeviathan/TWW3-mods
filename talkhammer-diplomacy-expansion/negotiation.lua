@@ -1,6 +1,9 @@
 local negotiation = {}
 local commission_verbs = { ["договорись"] = true, ["договоритесь"] = true,
     ["прекрати"] = true, ["прекратите"] = true, ["передай"] = true, ["передайте"] = true }
+local letter_verbs = { ["передай"] = true, ["передайте"] = true, ["отправь"] = true, ["отправьте"] = true,
+    ["напиши"] = true, ["напишите"] = true }
+local thanks_verbs = { ["поблагодари"] = true, ["поблагодарите"] = true }
 
 local function trim(text)
     return text:match("^%s*(.-)%s*$")
@@ -15,19 +18,39 @@ end
 function negotiation.install(deps, api)
     local cm, state, actions, world = deps.cm, deps.state, deps.actions, deps.world
     local tr, live, report = api.tr, api.live, api.report
+    local label_ruler = api.label_ruler or world.name_of
     local open, sequence = {}, 0
 
     local function order(key, text, player)
-        if text:match("[?;\r\n]") then return end
-        text = trim(text):gsub("[.!]+$", "")
+        text = trim(text)
         local address, message = text:match("^([^,]+),%s+(.+)$")
-        local addressed_verb = message and message:match("^(%S+)%s")
-        if addressed_verb and commission_verbs[deps.fold(addressed_verb)]
+        local addressed_verb = message and deps.fold(message:match("^(%S+)") or "")
+        if addressed_verb and (commission_verbs[addressed_verb] or letter_verbs[addressed_verb] or thanks_verbs[addressed_verb])
             and api.resolve_faction(address, player, key) == key then text = message end
         local verb, remaining = text:match("^(%S+)%s+(.+)$")
         if not verb then return end
         verb = deps.fold(verb)
         local function faction(raw) return raw and api.resolve_faction(trim(raw), player, key) end
+        local addressee, content, thank = nil, nil, thanks_verbs[verb]
+        if thank and not remaining:match("[?;\r\n]") then
+            addressee, content = remaining:match("^(.-)%s+за%s+(.+)$")
+            addressee = addressee or remaining:gsub("[.!]+$", "")
+        elseif letter_verbs[verb] then
+            addressee, content = remaining:match("^([^:]+):%s*(.*)$")
+            if addressee then addressee = addressee:gsub("%s+сообщение%s*$", ""):gsub("%s+письмо%s*$", "") end
+        end
+        if addressee then
+            if not thank and trim(content) == "" then
+                return nil, tr("Write the message after the colon.", "Добавь текст сообщения после двоеточия.")
+            end
+            local recipient = faction(addressee)
+            if not recipient or recipient == key or recipient == player then
+                return nil, tr("Name one other ruler to receive the message.", "Назови другого правителя, которому нужно доставить сообщение.")
+            end
+            return { kind = "letter", key = key, target = recipient, player = player, content = content, thank = thank }
+        end
+        if remaining:match("[?;\r\n]") then return end
+        remaining = remaining:gsub("[.!]+$", "")
         local kind, target, from, to, first, second, cap, pact
         if verb == "договорись" or verb == "договоритесь" then
             local named, direction = remaining:match("^с (.-) о конфедерации%.%s*(.+)$")
@@ -102,7 +125,7 @@ function negotiation.install(deps, api)
     end
 
     local function eligible(deal)
-        if not fresh(deal) or not api.direct() or actions.blocked then
+        if not fresh(deal) or (deal.kind ~= "letter" and not api.direct()) or actions.blocked then
             return false, tr("This commission is no longer available.", "Это поручение больше недоступно.")
         end
         local first, second, player = live(deal.key), live(deal.target), live(deal.player)
@@ -110,6 +133,7 @@ function negotiation.install(deps, api)
             or not first:is_vassal_of(player) then
             return false, tr("Address your active AI vassal.", "Обратись к действующему вассалу под управлением ИИ.")
         end
+        if deal.kind == "letter" then return true end
         if deal.kind == "union" then
             if first:subculture() ~= second:subculture() or first:at_war_with(second) then
                 return false, tr("Confederation requires peace and a shared subculture.", "Для конфедерации нужен мир и общая субкультура.")
@@ -160,13 +184,13 @@ function negotiation.install(deps, api)
                 .. " gold if needed. Request the least you accept. This is the only permitted concession." or " No payment.")
     end
 
-    local function conclude(deal, message)
+    local function conclude(deal, message, recipient)
         if deal.listener then
             deps.core:remove_listener(deal.listener)
             deal.listener = nil
         end
         if open[deal.key] == deal then open[deal.key] = nil end
-        if deal.campaign == state.data then report(deal.key, message) end
+        if deal.campaign == state.data then report(deal.key, message, recipient) end
     end
 
     local function attempt(method, ...)
@@ -318,6 +342,46 @@ function negotiation.install(deps, api)
         end
     end
 
+    local function correspond(deal, letter)
+        local from, to = label_ruler(deal.key), label_ruler(deal.target)
+        local turn_phase = letter and "letter_reply" or "letter_write"
+        deal.phase = turn_phase
+        local who, prompt
+        if letter then
+            who = deal.target
+            prompt = "A diplomatic message addressed to you from " .. from .. ":\n" .. letter
+                .. "\nReply in your own voice. You may acknowledge it or refuse. Set gold to zero."
+                .. " This correspondence cannot conclude a treaty, spend money, or order a campaign action."
+        else
+            who = deal.key
+            local assignment = deal.thank and ("Thank the recipient" .. (deal.content and (" for: " .. deal.content) or "."))
+                or ("Convey the following message in your own words: " .. deal.content)
+            prompt = "Your overlord asks you to address a diplomatic message to " .. to .. ". " .. assignment
+                .. "\nIf you agree, return accept and write the message addressed to the recipient in line."
+                .. " If you refuse, return decline and give the overlord your reason instead. Set gold to zero."
+                .. " This correspondence cannot conclude a treaty or order a campaign action."
+        end
+
+        local function reply(line, decision)
+            if open[deal.key] ~= deal or deal.phase ~= turn_phase then return end
+            local ok, reason = eligible(deal)
+            if not ok then return conclude(deal, reason) end
+            line = type(line) == "string" and trim(line:gsub("%s+", " ")) or ""
+            if not decision or decision.gold ~= 0 or line == "" then
+                return conclude(deal, tr("The exchange could not be completed.", "Не удалось завершить обмен сообщениями."))
+            end
+            if not letter then
+                if decision.verdict == "accept" then return correspond(deal, line) end
+                return conclude(deal, tr("%s declined to send the message. %s", "Отказ от отправки. %s: %s"):format(from, line))
+            end
+            local exchange = tr("Correspondence between %s and %s", "Переписка между %s и %s"):format(from, to)
+                .. "\n" .. from .. ": " .. letter .. "\n" .. to .. ": " .. line
+            conclude(deal, exchange, deal.target)
+        end
+        local requested, sent = pcall(api.ask, who, prompt, reply, true)
+        if not requested or not sent then reply() end
+    end
+
     local function handle(key, text, player, turn)
         if not api.direct() then return false end
         local deal, why = order(key, text, player)
@@ -331,8 +395,13 @@ function negotiation.install(deps, api)
         sequence = sequence + 1
         deal.id = sequence
         open[key] = deal
-        report(key, tr("Commission given · ", "Поручение принято к рассмотрению · ") .. details(deal))
-        hear(deal, key, true)
+        if deal.kind == "letter" then
+            report(key, tr("Preparing a message for ", "Готовится сообщение для ") .. label_ruler(deal.target) .. ".")
+            correspond(deal)
+        else
+            report(key, tr("Commission given · ", "Поручение принято к рассмотрению · ") .. details(deal))
+            hear(deal, key, true)
+        end
         return true
     end
 

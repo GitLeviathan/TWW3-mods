@@ -5,7 +5,7 @@ local turn, paid, fight, pact = 81, 0, true, false
 local owners = { fort = "sisters", sh = "kislev" }
 local gold = { player = 10000, kislev = 2000 }
 local names = { ["Малус"] = "malus", ["Хелеброн"] = "har", ["Хаг Греф"] = "malus", ["Хар Ганет"] = "har",
-    ["Катарин"] = "kislev", ["Сёстры"] = "sisters", ["Кислевом"] = "kislev" }
+    ["Катарин"] = "kislev", ["Сёстры"] = "sisters", ["Кислевом"] = "kislev", ["Морати"] = "morathi" }
 local places = { ["Форт Оберштир"] = "fort", ["Штайнгарт"] = "sh" }
 local factions = {}
 for _, key in pairs(names) do
@@ -39,7 +39,7 @@ local deps = {
         calls.callback = function(context) if when(context) then cb(context); return true end end
     end, remove_listener = function() calls.callback = nil end },
     actions = { max_payment = 10000 }, state = { data = {} }, world = { name_of = function(k) return k end },
-    fold = function(s) return s:gsub("^Д", "д"):gsub("^П", "п"):gsub("^М", "м") end,
+    fold = function(s) return s:gsub("^Д", "д"):gsub("^П", "п"):gsub("^М", "м"):gsub("^О", "о"):gsub("^Н", "н") end,
 }
 local api = {
     tr = function(_, ru) return ru end, live = function(key) return factions[key] end,
@@ -52,17 +52,17 @@ local api = {
     owner_of = function(region) return owners[region] end,
     place_name = function(region) return region end,
     occupied = function() return false end,
-    report = function(key, line) reports[#reports + 1] = { key, line } end,
-    ask = function(key, prompt, callback)
-        replies[#replies + 1] = { key = key, prompt = prompt, callback = callback }
+    report = function(key, line, recipient) reports[#reports + 1] = { key, line, recipient } end,
+    ask = function(key, prompt, callback, correspondence)
+        replies[#replies + 1] = { key = key, prompt = prompt, callback = callback, correspondence = correspondence }
         return true
     end,
 }
 local ctl = negotiation.install(deps, api)
-local function answer(key, verdict, gold)
+local function answer(key, verdict, gold, line)
     local pending = assert(table.remove(replies, 1))
     assert(pending.key == key)
-    pending.callback("Мой ответ.", { verdict = verdict, gold = gold or 0 })
+    pending.callback(line or "Мой ответ.", { verdict = verdict, gold = gold or 0 })
     return pending.callback
 end
 local function flush()
@@ -122,4 +122,29 @@ answer("sisters", "accept")
 turn = turn + 1
 answer("kislev", "accept", 100)
 assert(fight and paid == 2500)
-print("Envoys: both decisions, direction, paid peace and budget, pact, exchange rollback and confirmation, stale replies")
+local thanks = "Хелеброн, поблагодари Морати за Гронд, Ледяную дорогу и Великую Арену."
+assert(ctl.handle("har", thanks, "player", turn), "A natural thank-you order must start correspondence")
+assert(replies[1].correspondence and replies[1].prompt:find("Ледяную дорогу", 1, true))
+local letter = "Морати, благодарю за переданные города."
+answer("har", "accept", 0, letter)
+assert(replies[1].correspondence and replies[1].prompt:find(letter, 1, true))
+local reply = answer("morathi", "decline", 0, "Щедрость всегда имеет цену.")
+assert(reports[#reports][1] == "har" and reports[#reports][3] == "morathi"
+    and reports[#reports][2]:find(letter, 1, true)
+    and reports[#reports][2]:find("Щедрость всегда имеет цену.", 1, true))
+local finished_reports = #reports
+reply("Лишний ответ", {verdict = "accept", gold = 0})
+assert(#reports == finished_reports and fight and paid == 2500)
+
+assert(ctl.handle("har", "Отправь Морати письмо: Можем ли мы поговорить?", "player", turn))
+assert(replies[1].prompt:find("Можем ли мы поговорить?", 1, true))
+answer("har", "decline")
+assert(not replies[1] and not reports[#reports][3])
+assert(ctl.handle("har", thanks, "player", turn))
+answer("har", "accept")
+turn = turn + 1
+answer("morathi", "accept")
+assert(not reports[#reports][3], "A reply received after the player's turn must not be delivered")
+local handled, missing = ctl.handle("har", "Напиши Морати:", "player", turn)
+assert(handled and missing and #replies == 0)
+print("Envoys and correspondence: delivery, refusal, diplomacy restrictions, rollback, and stale replies passed")
