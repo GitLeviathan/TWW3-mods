@@ -1,5 +1,6 @@
 -- View-only: load the selected unit's static battle asset, never a campaign character.
 local models = __MODEL_MAP__
+local native_scenes = __NATIVE_SCENE_MAP__
 local current_key, current_page
 local function log(text) if out then out('MASK_PREVIEW|' .. text) end end
 local function describe(label, component)
@@ -52,6 +53,13 @@ local function update()
         local viewport = direct and scene or find_uicomponent(scene, 'mask_model_renderer')
         assert(viewport and viewport:CurrentState() == 'mask_model_view', 'Created layout has no model viewport')
         if not direct then scene:MoveTo(holder:Position()) end
+        local native_scene = native_scenes[key]
+        if native_scene then
+            local unit = name:GetContextObject('CcoMainUnitRecord')
+            assert(unit, 'Selected form has no main-unit context')
+            viewport:SetContextObject(unit)
+            log('native-scene|' .. key .. '|' .. native_scene)
+        end
         describe(direct and 'viewport-direct' or 'viewport-child', viewport)
         return address
     end)
@@ -63,7 +71,7 @@ local function update()
     if not ok then log('create-error|' .. tostring(created)) end
 end
 cm:add_first_tick_callback(function()
-    log('direct battle asset loader v6 native full-body view')
+    log('form preview v7 native composite scenes')
     cm:repeat_real_callback(function()
         local ok, err = pcall(update)
         if not ok then

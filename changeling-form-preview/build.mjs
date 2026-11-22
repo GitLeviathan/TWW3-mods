@@ -98,7 +98,8 @@ const hierarchy = `<mask_model_page this="${ids.page}"><mask_asset_holder this="
 const modified = (native.slice(0,outerEnd)+hierarchy+native.slice(outerEnd)).replace('</components>',additions+'\n</components>');
 fs.writeFileSync(new URL('dlc24_formless_horror.twui.xml',here),modified);
 const models=JSON.parse(fs.readFileSync(new URL('./model-manifest.json',here))).models;
-const entries=new Map([[key,Buffer.from(modified)]]),luaModels=[];
+const nativeScenes=JSON.parse(fs.readFileSync(new URL('./native-scenes.json',here)));
+const entries=new Map([[key,Buffer.from(modified)]]),luaModels=[],luaScenes=[];
 for(const [unit,model] of Object.entries(models)){
   assert(/^[a-zA-Z0-9_]+$/.test(unit));
   const layoutPath='ui/campaign ui/tww3_mask_models/'+unit;
@@ -110,12 +111,22 @@ for(const [unit,model] of Object.entries(models)){
   if(model.animation)scene=scene.replace(/<animation_paths>[\s\S]*?<\/animation_paths>/,`<animation_paths><path value="${esc(model.animation)}"/></animation_paths>`);
   else scene=scene.replace('num_anims="1"','num_anims="0"').replace(/<animation_paths>[\s\S]*?<\/animation_paths>/,'');
   assert(scene.includes(`filepath="${esc(model.asset)}"`),'Model substitution failed: '+unit);
+  const nativeScene = nativeScenes[unit];
+  if (nativeScene) {
+    assert(/^composite_scene\/[\w/-]+\.csc$/.test(nativeScene), `Invalid native scene for ${unit}`);
+    const expression = esc(`Format("%s", "${nativeScene}")`);
+    const setter = `<callback_with_context callback_id="ContextComponentModelSetter" context_object_id="CcoMainUnitRecord" context_function_id="${expression}"/>`;
+    scene = scene.replace(/<callback_with_context callback_id="ClanLeaderModelView">[\s\S]*?<\/callback_with_context>/, setter);
+    assert(scene.includes(setter), `Missing model initialization for ${unit}`);
+    luaScenes.push(`["${unit}"]="${nativeScene}"`);
+  }
   const rid=guid(unit+':root'), sid=guid(unit+':root-state');
   const xml=`<?xml version="1.0"?><layout version="142"><hierarchy><root this="${rid}"><mask_model_renderer this="${ids.renderer}"/></root></hierarchy><components>
   <root this="${rid}" id="root" uniqueguid="${rid}" currentstate="${sid}" defaultstate="${sid}" clipchildren="true"><states><default this="${sid}" name="default" uniqueguid="${sid}" width="470" height="510"/></states></root>${scene}</components></layout>`;
   entries.set(layoutPath.replaceAll('/','\\')+'.twui.xml',Buffer.from(xml));
 }
-const lua=fs.readFileSync(new URL('./preview.lua',here),'utf8').replace('__MODEL_MAP__','{'+luaModels.join(',\n')+'}');
+const lua=fs.readFileSync(new URL('./preview.lua',here),'utf8').replace('__MODEL_MAP__','{'+luaModels.join(',\n')+'}')
+  .replace('__NATIVE_SCENE_MAP__','{'+luaScenes.join(',\n')+'}');
 entries.set('script\\campaign\\mod\\tww3_mask_direct_asset_preview.lua',Buffer.from(lua));
 fs.writeFileSync(new URL('./preview.generated.lua',here),lua);
 const header=Buffer.alloc(28);header.write('PFH5');header.writeUInt32LE(3,4);header.writeUInt32LE(entries.size,16);
@@ -124,5 +135,5 @@ header.writeUInt32LE(idx.length,20);const pack=Buffer.concat([header,idx,...entr
 fs.writeFileSync(new URL('00_changeling_formless_model_preview.pack',here),pack);
 const sha256 = b => crypto.createHash('sha256').update(b).digest('hex');
 fs.writeFileSync(new URL('verification.json',here),JSON.stringify({source,sourceSha256:sha256(native),sha256:sha256(pack),ids,
-  sceneSource:'main_units -> unit_variants -> variants; direct static battle model',models:Object.keys(models).length,nativeControlsUnchanged:true,inGameVerified:false},null,2)+'\n');
+  sceneSource:'Native full-body scenes and direct battle assets',models:Object.keys(models).length,nativeScenes:luaScenes.length,nativeControlsUnchanged:true,inGameVerified:false},null,2)+'\n');
 console.log('Built 00_changeling_formless_model_preview.pack '+sha256(pack));

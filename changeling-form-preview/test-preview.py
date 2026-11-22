@@ -6,7 +6,7 @@ if os.environ.get('TWW3_LUPA_PATH'):
 from lupa import LuaRuntime
 lua=LuaRuntime(unpack_returned_tuples=True)
 lua.execute('''
-selected='wh2_main_hef_cha_tyrion_0'; shown=true; calls=0; destroyed=0; logs={}
+selected='wh2_main_hef_cha_tyrion_0'; shown=true; calls=0; destroyed=0; logs={}; live_context=true
 page={Visible=function() return shown end, Address=function() return 'page1' end}
 holder={DestroyChildren=function() destroyed=destroyed+1; last_path=nil end,
  Position=function() return 1800,400 end,
@@ -15,16 +15,19 @@ holder={DestroyChildren=function() destroyed=destroyed+1; last_path=nil end,
  CreateComponent=function(self,name,path) calls=calls+1; last_path=path; if fail_create then return nil end; model_x,model_y=0,0; return 'address' end}
 viewport={Position=function() return model_x,model_y end,Dimensions=function() return 470,510 end,
  Visible=function() return true end,Id=function() return 'mask_model_renderer' end,
- ChildCount=function() return 0 end,CurrentState=function() return 'mask_model_view' end}
+ ChildCount=function() return 0 end,CurrentState=function() return 'mask_model_view' end,
+ SetContextObject=function(self,context) bound_context=context end}
 created_ui={Position=function() return model_x,model_y end,Dimensions=function() return 470,510 end,
  Visible=function() return true end,Id=function() return 'mask_current_model' end,
  ChildCount=function() return (missing_viewport or direct_viewport) and 0 or 1 end,
  CurrentState=function() return direct_viewport and 'mask_model_view' or 'default' end,
+ SetContextObject=function(self,context) bound_context=context end,
  MoveTo=function(self,x,y) model_x,model_y=x,y end}
 function UIComponent(address) assert(address=='address');return created_ui end
 label={SetText=function(self,text) caption=text end}
 notice={SetText=function(self,text) message=text end,SetVisible=function(self,v) notice_visible=v end}
-name={GetContextObjectId=function(self,t) assert(t=='CcoMainUnitRecord');return 'context' end}
+name={GetContextObjectId=function(self,t) assert(t=='CcoMainUnitRecord');return 'context' end,
+ GetContextObject=function(self,t) assert(t=='CcoMainUnitRecord');return live_context and { key=selected } or nil end}
 common={get_context_value=function(t,id,fn) assert(t=='CcoMainUnitRecord' and fn=='Key');return selected end}
 core={get_ui_root=function() return {} end,add_listener=function(...) end}
 cm={add_first_tick_callback=function(self,fn) fn() end,repeat_real_callback=function(self,fn,ms) assert(ms==200);poll=fn end,real_callback=function(self,fn,ms) assert(ms==50);fn() end}
@@ -52,6 +55,10 @@ assert(logs[#logs]:find('Created layout has no model viewport',1,true))
 missing_viewport=false; selected='wh2_main_hef_cha_tyrion_0'; poll(); assert(notice_visible==false)
 direct_viewport=true; selected='wh3_dlc26_grn_cha_snagla_grobspit'; poll()
 assert(last_path:find('snagla') and not notice_visible, 'The engine returned the renderer directly')
+live_context=true; selected='wh3_dlc29_chs_cha_glottkin'; poll()
+assert(not notice_visible and bound_context and bound_context.key==selected, 'Native scene has no selected unit context')
+live_context=false; selected='wh_dlc06_dwf_cha_belegar_ironhammer_0'; poll()
+assert(notice_visible and logs[#logs]:find('no main-unit context',1,true), 'Requested native scene lost its context')
 assert(caption=='Показать характеристики')
 ''')
 print('PASS: real Lua execution: selection changes, unchanged selection, absent campaign characters, unsupported/missing keys, creation failure and reopening')
