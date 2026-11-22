@@ -40,12 +40,16 @@ export function placeActionButton(component, x, y, width, height) {
   return centerActionArt(dimensions(component, x, y, width, height), width, height);
 }
 
-export function styleConversationActions(layout) {
+export function styleConversationLayout(layout) {
   for (const [id, x, width] of [['th_accept', 20, 476], ['th_speak', 918, 162]]) {
     const component = definition(layout, id);
     layout = layout.replace(component, () => placeActionButton(component, x, actionRow.y, width, actionRow.height));
   }
-  return layout;
+  const frame = definition(layout, 'th_frame');
+  const tiled = skin(frame, 'tooltip_frame.png', '16.00,20.00,16.00,20.00')
+    .replace(/<image\s[^>]*\/>/, image =>
+      image.replace(/\btile="[^"]+"\s*/, '').replace('margin=', 'tile="true" margin='));
+  return layout.replace(frame, () => tiled);
 }
 
 function initiallyHidden(component) {
@@ -83,7 +87,7 @@ export function verifyMaskLayout(layout) {
 }
 
 export function styleMaskLayout(source) {
-  let layout = styleConversationActions(source);
+  let layout = styleConversationLayout(source);
   function remove(id) {
     const existing = new RegExp('<' + id + '\\r?\\n[\\s\\S]*?</' + id + '>');
     const link = new RegExp('<' + id + ' this="[^"]+"\\s*/>');
