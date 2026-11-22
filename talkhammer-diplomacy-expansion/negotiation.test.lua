@@ -39,7 +39,10 @@ local deps = {
         calls.callback = function(context) if when(context) then cb(context); return true end end
     end, remove_listener = function() calls.callback = nil end },
     actions = { max_payment = 10000 }, state = { data = {} }, world = { name_of = function(k) return k end },
-    fold = function(s) return s:gsub("^Д", "д"):gsub("^П", "п"):gsub("^М", "м"):gsub("^О", "о"):gsub("^Н", "н") end,
+    fold = function(s)
+        return s:gsub("^Д", "д"):gsub("^П", "п"):gsub("^М", "м"):gsub("^О", "о")
+            :gsub("^Н", "н"):gsub("^С", "с"):gsub("^Х", "х")
+    end,
 }
 local api = {
     tr = function(_, ru) return ru end, live = function(key) return factions[key] end,
@@ -147,4 +150,36 @@ answer("morathi", "accept")
 assert(not reports[#reports][3], "A reply received after the player's turn must not be delivered")
 local handled, missing = ctl.handle("har", "Напиши Морати:", "player", turn)
 assert(handled and missing and #replies == 0)
-print("Envoys and correspondence: delivery, refusal, diplomacy restrictions, rollback, and stale replies passed")
+
+local variants = {
+    { "Поблагадори Морати за подаренные поселения", "Thank the recipient" },
+    { "Хелеброн, пожалуйста, скажи Морати спасибо за Гронд!", "Гронд" },
+    { "Скажи спасибо Морати за Гронд", "Thank the recipient" },
+    { "Можешь поблагодарить Морати за Гронд?", "Thank the recipient" },
+    { "Передай Морати благодарность за Гронд", "Thank the recipient" },
+    { "Свяжись с Морати и поблагодари её за Гронд", "Гронд" },
+    { "Скажи Морати, что я ценю её помощь.", "я ценю её помощь." },
+    { "Напиши письмо Морати: Когда мы можем встретиться?", "Когда мы можем встретиться?" },
+}
+for _, sample in ipairs(variants) do
+    assert(ctl.handle("har", sample[1], "player", turn), sample[1])
+    assert(replies[1].prompt:find(sample[2], 1, true), sample[1])
+    assert(replies[1].prompt:find("morathi", 1, true), sample[1])
+    answer("har", "decline")
+end
+for _, chat in ipairs({ "Ты поблагодарила Морати?", "Стоит ли поблагодарить Морати?",
+    "Не благодари Морати", "Поговори со мной о Морати", "Скажи мне, что думаешь о Морати" }) do
+    assert(not ctl.handle("har", chat, "player", turn) and #replies == 0, chat)
+end
+assert(ctl.handle("har", thanks, "player", turn))
+local followup = "Обратись к ней сразу, не откладывай на потом."
+local in_progress, update = ctl.handle("har", followup, "player", turn)
+assert(in_progress and update:find("уже", 1, true) and #replies == 1)
+answer("har", "accept", 0, letter)
+answer("morathi", "accept")
+local finished, notice = ctl.handle("har", followup, "player", turn)
+assert(finished and notice:find("завершён", 1, true) and #replies == 0)
+turn = turn + 1
+local unknown, clarification = ctl.handle("har", followup, "player", turn)
+assert(unknown and clarification:find("Назови", 1, true) and #replies == 0)
+print("Envoys and correspondence: phrasing variants, follow-ups, delivery, refusal, rollback, and stale replies passed")

@@ -2,8 +2,17 @@ local negotiation = {}
 local commission_verbs = { ["договорись"] = true, ["договоритесь"] = true,
     ["прекрати"] = true, ["прекратите"] = true, ["передай"] = true, ["передайте"] = true }
 local letter_verbs = { ["передай"] = true, ["передайте"] = true, ["отправь"] = true, ["отправьте"] = true,
-    ["напиши"] = true, ["напишите"] = true }
-local thanks_verbs = { ["поблагодари"] = true, ["поблагодарите"] = true }
+    ["напиши"] = true, ["напишите"] = true, ["скажи"] = true, ["скажите"] = true,
+    ["передать"] = true, ["отправить"] = true, ["написать"] = true, ["сказать"] = true }
+local thanks_verbs = { ["поблагодари"] = true, ["поблагодарите"] = true, ["поблагодарить"] = true,
+    ["поблагадори"] = true, ["поблагадорите"] = true, ["поблагадорить"] = true,
+    ["благодари"] = true, ["благодарите"] = true, ["отблагодари"] = true, ["отблагодарите"] = true }
+local contact_prepositions = { ["обратись"] = "к", ["обратитесь"] = "к", ["обратиться"] = "к",
+    ["свяжись"] = "с", ["свяжитесь"] = "с", ["связаться"] = "с", ["поговори"] = "с", ["поговорите"] = "с" }
+local courtesy_words = { ["пожалуйста"] = true, ["прошу"] = true }
+local request_words = { ["можешь"] = true, ["можете"] = true }
+local references = { ["ей"] = true, ["ему"] = true, ["ней"] = true, ["нему"] = true, ["ним"] = true }
+local first_person = { ["мне"] = true, ["нам"] = true, ["себе"] = true }
 
 local function trim(text)
     return text:match("^%s*(.-)%s*$")
@@ -15,32 +24,100 @@ local function unsigned(text)
     if amount and amount >= 0 and amount < math.huge then return amount end
 end
 
+local function without_courtesy(text, fold)
+    local word, rest = text:match("^(%S-)[,!]?[ \t]+(.+)$")
+    return word and courtesy_words[fold(word)] and rest or text
+end
+
+local function opening(text, fold)
+    local verb, rest = without_courtesy(text, fold):match("^(%S+)%s+(.+)$")
+    if not verb then return end
+    verb = fold(verb)
+    if request_words[verb] then
+        verb, rest = rest:match("^(%S+)%s+(.+)$")
+        if verb then return fold(verb), rest end
+        return
+    end
+    return verb, rest
+end
+
+local function thank_fields(text)
+    local recipient, reason = text:match("^(.-)%s+за%s+(.+)$")
+    return recipient or text, reason
+end
+
+local function letter_fields(verb, rest, fold)
+    local statement = rest:gsub("[.!?]+$", "")
+    if thanks_verbs[verb] then
+        local recipient, reason = thank_fields(statement)
+        return recipient, reason, true
+    end
+    local preposition = contact_prepositions[verb]
+    if preposition then
+        local target = statement:match("^" .. preposition .. "%s+(.+)$")
+        if not target then return end
+        local name, directive, message = target:match("^(.-)%s+и%s+(%S+)%s*(.*)$")
+        if directive and thanks_verbs[fold(directive)] then
+            local reason = message:match("^за%s+(.+)$") or message:match("^%S+%s+за%s+(.+)$")
+            return name, reason, true
+        end
+        local first_word = target:match("^([^%s,]+)")
+        if references[fold(first_word)] then return first_word end
+        return
+    end
+    if not letter_verbs[verb] then return end
+    local prefix, content = rest:match("^([^:]+):%s*(.*)$")
+    if not prefix then prefix, content = rest:match("^(.-),%s+что%s+(.+)$") end
+    if prefix then
+        local recipient = prefix:gsub("^сообщение%s+", ""):gsub("^письмо%s+", "")
+            :gsub("%s+сообщение%s*$", ""):gsub("%s+письмо%s*$", "")
+        if not first_person[fold(trim(recipient))] then return recipient, content end
+        return
+    end
+    local recipient, reason = thank_fields(statement)
+    local name = recipient:match("^спасибо%s+(.+)$") or recipient:match("^(.-)%s+спасибо$")
+        or recipient:match("^(.-)%s+благодарность$") or recipient:match("^благодарность%s+(.+)$")
+    if name then return name, reason, true end
+end
+
 function negotiation.install(deps, api)
     local cm, state, actions, world = deps.cm, deps.state, deps.actions, deps.world
     local tr, live, report = api.tr, api.live, api.report
     local label_ruler = api.label_ruler or world.name_of
-    local open, sequence = {}, 0
+    local open, last_letter, sequence = {}, {}, 0
+
+    local function fresh(deal)
+        return deal.campaign == state.data and deal.turn == cm:turn_number()
+            and deal.player == cm:get_local_faction_name(true)
+    end
 
     local function order(key, text, player)
-        text = trim(text)
+        text = without_courtesy(trim(text), deps.fold)
         local address, message = text:match("^([^,]+),%s+(.+)$")
-        local addressed_verb = message and deps.fold(message:match("^(%S+)") or "")
-        if addressed_verb and (commission_verbs[addressed_verb] or letter_verbs[addressed_verb] or thanks_verbs[addressed_verb])
+        local addressed_verb = message and opening(message, deps.fold)
+        if addressed_verb and (commission_verbs[addressed_verb] or letter_verbs[addressed_verb]
+            or thanks_verbs[addressed_verb] or contact_prepositions[addressed_verb])
             and api.resolve_faction(address, player, key) == key then text = message end
-        local verb, remaining = text:match("^(%S+)%s+(.+)$")
+        local verb, remaining = opening(text, deps.fold)
         if not verb then return end
-        verb = deps.fold(verb)
         local function faction(raw) return raw and api.resolve_faction(trim(raw), player, key) end
-        local addressee, content, thank = nil, nil, thanks_verbs[verb]
-        if thank and not remaining:match("[?;\r\n]") then
-            addressee, content = remaining:match("^(.-)%s+за%s+(.+)$")
-            addressee = addressee or remaining:gsub("[.!]+$", "")
-        elseif letter_verbs[verb] then
-            addressee, content = remaining:match("^([^:]+):%s*(.*)$")
-            if addressee then addressee = addressee:gsub("%s+сообщение%s*$", ""):gsub("%s+письмо%s*$", "") end
-        end
+        local addressee, content, thank = letter_fields(verb, remaining, deps.fold)
         if addressee then
-            if not thank and trim(content) == "" then
+            if references[deps.fold(trim(addressee))] then
+                local previous = last_letter[key]
+                if previous and fresh(previous) then
+                    local name = label_ruler(previous.target)
+                    if open[key] == previous then
+                        return nil, tr("Correspondence with %s is already underway.", "Переписка с %s уже идёт."):format(name)
+                    elseif previous.delivered then
+                        return nil, tr("The exchange with %s has already finished.", "Обмен с %s уже завершён."):format(name)
+                    end
+                    return nil, tr("The previous exchange did not finish. Give a new assignment to try again.",
+                        "Предыдущий обмен не завершился. Чтобы повторить попытку, сформулируй поручение заново.")
+                end
+                return nil, tr("Name the ruler who should receive the message.", "Назови правителя, которому нужно отправить сообщение.")
+            end
+            if not thank and trim(content or "") == "" then
                 return nil, tr("Write the message after the colon.", "Добавь текст сообщения после двоеточия.")
             end
             local recipient = faction(addressee)
@@ -100,11 +177,6 @@ function negotiation.install(deps, api)
         end
         return { kind = kind, key = key, target = target, player = player, from = from, to = to,
             first = first, second = second, cap = cap, pact = pact }
-    end
-
-    local function fresh(deal)
-        return deal.campaign == state.data and deal.turn == cm:turn_number()
-            and deal.player == cm:get_local_faction_name(true)
     end
 
     local function active(key)
@@ -376,6 +448,7 @@ function negotiation.install(deps, api)
             end
             local exchange = tr("Correspondence between %s and %s", "Переписка между %s и %s"):format(from, to)
                 .. "\n" .. from .. ": " .. letter .. "\n" .. to .. ": " .. line
+            deal.delivered = true
             conclude(deal, exchange, deal.target)
         end
         local requested, sent = pcall(api.ask, who, prompt, reply, true)
@@ -396,6 +469,7 @@ function negotiation.install(deps, api)
         deal.id = sequence
         open[key] = deal
         if deal.kind == "letter" then
+            last_letter[key] = deal
             report(key, tr("Preparing a message for ", "Готовится сообщение для ") .. label_ruler(deal.target) .. ".")
             correspond(deal)
         else
