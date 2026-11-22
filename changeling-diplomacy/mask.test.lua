@@ -13,7 +13,7 @@ local ledger_ok = true
 local ui_sub, ui_ledger, ui_deal, ui_accept, ui_portrait, ui_lines
 local buttons = {}
 for _, id in ipairs({ "th_mask_regard", "th_mask_status", "th_mask_deal_heading", "th_mask_ledger_heading",
-    "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist",
+    "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist", "th_mask_confirm",
     "th_mask_preview_next", "th_mask_preview_exit", "speak" }) do
     buttons[id] = {
         SetVisible = function(self, value) self.visible = value end,
@@ -897,17 +897,18 @@ assert(not applied, "A declaration of war reached the engine before the player c
 ruler.tick()
 assert(ui_deal:find("Объявляет войну — gelt", 1, true) and ui_deal:find("Цель — " .. owner, 1, true),
     "The card did not name the attacker and defender")
-assert(buttons.th_mask_insist.text == "Подтвердить" and buttons.th_mask_withdraw.text == "Отказаться"
-    and not buttons.th_mask_explain.visible, "The card showed the wrong decisions")
+assert(buttons.th_mask_confirm.visible and buttons.th_mask_confirm.text == "Подтвердить"
+    and buttons.th_mask_withdraw.text == "Отказаться"
+    and not buttons.th_mask_insist.visible and not buttons.th_mask_explain.visible, "The card showed the wrong decisions")
 click("withdraw")
-assert(not applied and not buttons.th_mask_insist.visible, "Rejecting a card did not cancel the war")
+assert(not applied and not buttons.th_mask_confirm.visible, "Rejecting a card did not cancel the war")
 
 negotiate("gelt", "We declare war.", "declare_war")
 ruler.tick()
 assert(ui_deal:find("Объявляет войну — " .. owner, 1, true) and ui_deal:find("Цель — gelt", 1, true))
-click("insist")
+click("confirm")
 assert_pair("war", owner, "gelt")
-assert(#applied_actions == 1 and not buttons.th_mask_insist.visible)
+assert(#applied_actions == 1 and not buttons.th_mask_confirm.visible)
 mask_command("confirm")
 assert(#applied_actions == 1, "A repeated confirmation applied the same war twice")
 
@@ -918,17 +919,17 @@ ruler.tick()
 assert(not applied and not access["gelt|" .. owner], "A term escaped the card's confirmation")
 assert(ui_deal:find("Цель — reikland_enemy", 1, true) and ui_deal:find("Военный доступ", 1, true))
 wars["gelt|reikland_enemy"] = true
-click("insist")
+click("confirm")
 assert(not applied and not access["gelt|" .. owner], "A stale war card applied another term of its package")
 
 negotiate("gelt", "Enter our confederation.", "confederate")
 ruler.tick()
 assert(not applied and ui_deal:find("Поглощает — " .. owner, 1, true)
     and ui_deal:find("Входит в состав — gelt", 1, true))
-dispatch("ComponentLClickUp", "th_mask_insist")
+dispatch("ComponentLClickUp", "th_mask_confirm")
 turn = turn + 1
 ruler.tick()
-assert(not applied and not absorbed.gelt and not buttons.th_mask_insist.visible)
+assert(not applied and not absorbed.gelt and not buttons.th_mask_confirm.visible)
 
 exposure.warn(state.data, "gelt", { exposure.form_key({ subtype = form, faction = owner }) }, "bystander", turn)
 negotiate("gelt", "We declare war.", "declare_war")
@@ -949,13 +950,13 @@ negotiate("gelt", "Break the pact.", "break_non_aggression")
 insist()
 negotiate("gelt", "Attack Enemy. [цель: Enemy]", "attack_third")
 ruler.tick()
-assert(buttons.th_mask_insist.text == "Подтвердить")
+assert(buttons.th_mask_confirm.visible and buttons.th_mask_confirm.text == "Подтвердить")
 alliances[owner .. "|reikland_enemy"] = "military"
 mask_command("confirm")
 assert(not applied, "Confirmation did not check the current alliance")
-dispatch("ComponentLClickUp", "th_mask_insist")
+dispatch("ComponentLClickUp", "th_mask_confirm")
 ruler.tick()
-assert(buttons.th_mask_insist.visible and buttons.th_mask_insist.text == "Настоять"
+assert(not buttons.th_mask_confirm.visible and buttons.th_mask_insist.visible and buttons.th_mask_insist.text == "Настоять"
     and ui_deal:find("Условия на проверке", 1, true), "A click on the old card answered an unseen exposure check")
 dismiss_narration()
 click("insist")
@@ -1079,7 +1080,7 @@ reply("become_vassal")
 ruler.tick()
 assert(not applied and ui_deal:find("Сюзерен — gelt", 1, true)
     and ui_deal:find("Вассал — " .. owner, 1, true), "Offering submission skipped or misstated its confirmation")
-click("insist")
+click("confirm")
 assert_pair("vassal", "gelt", owner)
 assert(masters[owner] == "gelt" and not masters.gelt)
 
@@ -1253,7 +1254,7 @@ do
         and buttons.th_mask_preview_next.visible)
     local real_accept = ruler.accept_shown
     ruler.press_accept()
-    click("insist")
+    click("confirm")
     assert(ui_lines:find("Конфедерация заключена", 1, true) and ruler.accept_shown == real_accept)
     ruler.talk_to("gelt", "Declare war.")
     ruler.handle_command({ cmd = "accept" })

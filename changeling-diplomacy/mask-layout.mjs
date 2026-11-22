@@ -64,6 +64,7 @@ export function verifyMaskLayout(layout) {
     'th_mask_toggle', 'th_mask_withdraw', 'th_mask_insist', 'th_mask_explain', 'th_speak',
     'th_mask_preview_next', 'th_mask_preview_exit',
   ];
+  if (layout.includes('id="th_mask_confirm"')) controls.push('th_mask_confirm');
   if (layout.includes('id="th_gift_open"')) controls.push('th_gift_open');
   const labels = ['th_mask_regard', 'th_mask_status', 'th_mask_hint', 'th_mask_deal_heading', 'th_mask_ledger_heading'];
   const bounds = [];
@@ -78,8 +79,16 @@ export function verifyMaskLayout(layout) {
     assert(component.includes('interactive="' + String(interactive) + '"'), 'Invalid input state: ' + id);
     if (interactive) bounds.push({ id, x, y, w, h });
   }
+  const confirm = bounds.find(({id}) => id === 'th_mask_confirm');
+  if (confirm) {
+    const withdraw = bounds.find(({id}) => id === 'th_mask_withdraw');
+    assert(confirm.w === withdraw.w && confirm.h === withdraw.h && confirm.y === withdraw.y,
+      'Confirm and decline must be the same size and on the same row');
+  }
   for (const [index, a] of bounds.entries()) {
     for (const b of bounds.slice(index + 1)) {
+      // Confirm appears only after the check, when Insist and Explain are hidden.
+      if (b === confirm && (a.id === 'th_mask_insist' || a.id === 'th_mask_explain')) continue;
       assert(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y,
         'Overlapping TalkHammer buttons: ' + a.id + ' and ' + b.id);
     }
@@ -109,10 +118,12 @@ export function styleMaskLayout(source) {
   }
 
   remove('th_mask_speaker');
+  const decisionWidth = 186;
   for (const [id, x, w] of [
-    ['th_mask_toggle', 710, 200], ['th_mask_withdraw', 20, 186],
+    ['th_mask_toggle', 710, 200], ['th_mask_withdraw', 20, decisionWidth],
     ['th_mask_insist', 214, 96], ['th_mask_explain', 318, 178],
   ]) edit(id, component => initiallyHidden(placeActionButton(component, x, actionRow.y, w, actionRow.height)));
+  add('th_mask_withdraw', 'th_mask_confirm', 214, actionRow.y, decisionWidth, actionRow.height);
   for (const id of ['th_crest', 'th_portrait', 'th_accept']) edit(id, initiallyHidden);
 
   // The native parchment trim and button art follow the game's faction skin.

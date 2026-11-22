@@ -4,6 +4,7 @@ local buttons = {
     explain = "th_mask_explain",
     withdraw = "th_mask_withdraw",
     insist = "th_mask_insist",
+    confirm = "th_mask_confirm",
     preview_next = "th_mask_preview_next",
     preview_exit = "th_mask_preview_exit",
 }
@@ -79,7 +80,8 @@ function panel.new(deps)
         set_button("toggle", available and (enabled and "Снять маску" or "Надеть маску") or nil)
         set_button("explain", checking and "Отправить объяснение" or nil)
         set_button("withdraw", checking and "Отозвать предложение" or (decision == "confirm" and "Отказаться" or nil))
-        set_button("insist", decision == "check" and "Настоять" or (decision == "confirm" and "Подтвердить" or nil))
+        set_button("insist", decision == "check" and "Настоять" or nil)
+        set_button("confirm", decision == "confirm" and "Подтвердить" or nil)
         set_button("preview_next", preview and "Далее" or nil)
         set_button("preview_exit", preview and "Выйти" or nil)
     end
@@ -87,7 +89,7 @@ function panel.new(deps)
     function view.command(id)
         if ui.mode ~= "talk" or not view.visible() then return end
         for mode, button in pairs(buttons) do
-            if id == button and shown[mode] then return mode end
+            if id == button and shown[mode] then return mode == "confirm" and "insist" or mode end
         end
     end
 
