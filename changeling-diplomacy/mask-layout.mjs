@@ -24,6 +24,30 @@ function skin(component, texture, margin) {
   return margin ? withTexture.replace(/margin="[^"]+"/, 'margin="' + margin + '"') : withTexture;
 }
 
+function centerActionArt(component, width, height) {
+  // The 46 px source texture is painted between y=2 and y=33.
+  const inset = Math.round(height * (23 - 17.5) / 46);
+  const cap = Math.min(50, Math.floor(width / 3));
+  return skin(component, buttonSkin, `0.00,${cap}.00,0.00,${cap}.00`)
+    .replace(/<image\s[^>]*\/>/, image =>
+      image.replace(/\s+offset="[^"]+"/, '').replace('/>', ` offset="0.00,${inset}.00"/>`))
+    .replace(/textyoffset="[^"]+"/, 'textyoffset="0.00,0.00"');
+}
+
+export const actionRow = { y: 442, height: 48 };
+
+export function placeActionButton(component, x, y, width, height) {
+  return centerActionArt(dimensions(component, x, y, width, height), width, height);
+}
+
+export function styleConversationActions(layout) {
+  for (const [id, x, width] of [['th_accept', 20, 476], ['th_speak', 918, 162]]) {
+    const component = definition(layout, id);
+    layout = layout.replace(component, () => placeActionButton(component, x, actionRow.y, width, actionRow.height));
+  }
+  return layout;
+}
+
 function initiallyHidden(component) {
   const header = component.slice(0, component.indexOf('>'));
   if (header.includes('visible="false"')) return component;
@@ -59,7 +83,7 @@ export function verifyMaskLayout(layout) {
 }
 
 export function styleMaskLayout(source) {
-  let layout = source;
+  let layout = styleConversationActions(source);
   function remove(id) {
     const existing = new RegExp('<' + id + '\\r?\\n[\\s\\S]*?</' + id + '>');
     const link = new RegExp('<' + id + ' this="[^"]+"\\s*/>');
@@ -81,13 +105,10 @@ export function styleMaskLayout(source) {
   }
 
   remove('th_mask_speaker');
-  for (const id of ['th_speak', 'th_accept', 'th_mask_toggle', 'th_mask_explain', 'th_mask_withdraw', 'th_mask_insist']) {
-    edit(id, component => skin(component, buttonSkin, '0.00,50.00,0.00,50.00'));
-  }
   for (const [id, x, w] of [
-    ['th_mask_toggle', 20, 196], ['th_mask_withdraw', 270, 234],
-    ['th_mask_insist', 513, 166], ['th_mask_explain', 688, 240],
-  ]) edit(id, component => initiallyHidden(dimensions(component, x, 454, w, 34)));
+    ['th_mask_toggle', 710, 200], ['th_mask_withdraw', 20, 186],
+    ['th_mask_insist', 214, 96], ['th_mask_explain', 318, 178],
+  ]) edit(id, component => initiallyHidden(placeActionButton(component, x, actionRow.y, w, actionRow.height)));
   for (const id of ['th_crest', 'th_portrait', 'th_accept']) edit(id, initiallyHidden);
 
   // The native parchment trim and button art follow the game's faction skin.
@@ -104,11 +125,10 @@ export function styleMaskLayout(source) {
   add('th_sub', 'th_mask_status', 604, 34, 304, 24,
     component => component.replace('#A99F89FF', '#FFE9B0FF'));
   add('th_sub', 'th_mask_hint', 20, 427, 835, 23);
-  const smallAction = component => skin(component, buttonSkin, '0.00,22.00,0.00,22.00')
-    .replace('textyoffset="6.00,6.00"', 'textyoffset="2.00,2.00"')
+  const smallAction = component => centerActionArt(component, 82, 32)
     .replace('interactive="false"', 'interactive="true"');
-  add('th_att', 'th_mask_preview_next', 924, 39, 76, 24, smallAction);
-  add('th_att', 'th_mask_preview_exit', 1006, 39, 76, 24, smallAction);
+  add('th_att', 'th_mask_preview_next', 910, 30, 82, 32, smallAction);
+  add('th_att', 'th_mask_preview_exit', 998, 30, 82, 32, smallAction);
 
   const links = added.map(({id, guid}) => '<' + id + ' this="' + guid + '"/>').join('\n');
   assert.equal(layout.split('</th_frame>').length, 3, 'Expected frame in hierarchy and components');
