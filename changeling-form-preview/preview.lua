@@ -63,7 +63,7 @@ local function update()
     if not ok then log('create-error|' .. tostring(created)) end
 end
 cm:add_first_tick_callback(function()
-    log('direct battle asset loader v5 viewport selection')
+    log('direct battle asset loader v6 native full-body view')
     cm:repeat_real_callback(function()
         local ok, err = pcall(update)
         if not ok then

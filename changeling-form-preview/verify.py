@@ -76,8 +76,10 @@ for unit, model in manifest.items():
     assert comp.find('.//ComponentModel').get('skeleton_type') == model['skeleton'], unit
     state = comp.find('states/newstate')
     assert state.get('interactive') == 'true' and state.get('name') == 'mask_model_view'
-    assert comp.find('.//callback_with_context').get('callback_id') == 'ComponentModelController'
-    assert not any(c.get('callback_id')=='ClanLeaderModelView' for c in comp.iter('callback_with_context'))
+    callbacks = list(comp.iter('callback_with_context'))
+    assert [c.get('callback_id') for c in callbacks] == ['ClanLeaderModelView', 'ComponentModelController'], unit
+    assert callbacks[0].find('.//property[@name="fullbody_camera"]') is not None, unit
+    assert all(c.get('context_object_id') is None for c in callbacks), unit
 sample = [manifest[k]['asset'] for k in ['wh2_main_hef_cha_tyrion_0','wh_dlc05_wef_cha_orion_0','wh2_main_lzd_cha_lord_mazdamundi_0']]
 assert len(set(sample)) == 3 and not any('emp_captains' in s.lower() for s in sample)
 print(f'PASS: {len(manifest)} direct model layouts; distinct Tyrion/Orion/Mazdamundi; no campaign-character dependency; native controls unchanged; pack round-trip')

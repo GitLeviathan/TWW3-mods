@@ -66,11 +66,8 @@ let renderer = clone(equipment, '_3d_character_window', '7B70D1A3-A1FB-4B07-B7F0
   .replace('offset="-478.00,0.00"','offset="0.00,0.00"')
   .replace('priority="45"','priority="80" updatewhennotvisible="true"')
   .replace('width="1960"','width="470"').replace('height="690"','height="510"')
-  .replace(/<callbackwithcontextlist>[\s\S]*?<\/callbackwithcontextlist>/, `<callbackwithcontextlist>
-    <callback_with_context callback_id="ComponentModelController"><child_m_user_properties>
-      <property name="rotate_speed" value="10"/><property name="zoom_speed" value="5"/>
-    </child_m_user_properties></callback_with_context>
-  </callbackwithcontextlist>`);
+  .replace(/\s*<callback_with_context\s+callback_id="ContextInteractiveSetter"[^>]*\/>/, '')
+  .replace(/\s*<property\s+name="reset_button_(?:parent_)?id"[^>]*\/>/g, '');
 const character = `<mask_asset_holder this="${ids.character}" id="mask_asset_holder" uniqueguid="${ids.character}" currentstate="${guid('character-state')}" defaultstate="${guid('character-state')}" updatewhennotvisible="true">
   <states><default this="${guid('character-state')}" name="default" uniqueguid="${guid('character-state')}" width="470" height="510"/></states>
 </mask_asset_holder>`;
