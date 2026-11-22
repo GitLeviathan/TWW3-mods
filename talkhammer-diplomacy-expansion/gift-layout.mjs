@@ -24,6 +24,9 @@ export function addGiftPanel(layout) {
     if (sourceId === 'th_frame') {
       definition = definition.replace(/(offset="[^"]+")/, '$1 priority="260"');
     }
+    if ((id === 'th_gift_open' || id === 'th_gift_picker') && !definition.slice(0, definition.indexOf('>')).includes('visible="false"')) {
+      definition = definition.replace(/(offset="[^"]+")/, '$1 visible="false"');
+    }
     const firstGuid = definition.match(/this="([^"]+)"/)[1];
     definitions.push(definition);
     return { id, guid: firstGuid };
