@@ -28,6 +28,8 @@ local notes = {}
 local listeners = {}
 local scheduled
 local async_transfer = false
+local gift_to_record, recorded_gifts = nil, {}
+local track_calls = 0
 
 local function list(entries)
     return {
@@ -85,6 +87,7 @@ local cm = {
     get_local_faction_name = function() return "player" end,
     turn_number = function() return current_turn end,
     transfer_region_to_faction = function(_, region, receiver)
+        assert(gift_to_record and gift_to_record.region == region and gift_to_record.to == receiver)
         moves = moves + 1
         if not async_transfer then city_owners[region] = receiver end
     end,
@@ -116,6 +119,21 @@ local deps = {
     world = { keys = {"player", "sisters", "kislev", "malus"}, name_of = function(key) return names[key] end,
         leader_name = function(key) if key == "har_ganeth" then return "Ведьма Хеллеброн" end end },
     actions = { blocked = false },
+    chronicle = {
+        begin_settlement_gift = function(gift)
+            assert(not gift_to_record and city_owners[gift.region] == gift.from)
+            gift_to_record = gift
+            track_calls = track_calls + 1
+        end,
+        finish_settlement_gift = function(gift, confirmed)
+            assert(gift_to_record == gift)
+            if confirmed then
+                assert(city_owners[gift.region] == gift.to)
+                recorded_gifts[#recorded_gifts + 1] = gift
+            end
+            gift_to_record = nil
+        end,
+    },
     localise = function(key) return cities[key:match("^regions_onscreen_(.+)$")] end,
     fold = function(text) return (text:gsub("[A-Z]", string.lower)) end,
     language = function() return "ru" end,
@@ -194,6 +212,7 @@ assert(moves == 0)
 assert(not accept({print = "settlement_gift|different"}))
 assert(accept(card))
 assert(moves == 1 and city_owners.faraway == "kislev")
+assert(#recorded_gifts == 1 and recorded_gifts[1].from == "sisters" and recorded_gifts[1].to == "kislev")
 assert(not accept(card) and moves == 1)
 
 city_owners.faraway = "sisters"
@@ -230,15 +249,18 @@ assert(not wrong and reason)
 async_transfer = true
 card = offer()
 assert(accept(card) and moves == 2 and scheduled)
+assert(#recorded_gifts == 1 and gift_to_record, "An unfinished transfer must not become a gift in the chronicle")
 assert(not accept(card) and moves == 2)
 city_owners.faraway = "kislev"
 scheduled()
 assert(notes[#notes]:find("передано", 1, true))
+assert(#recorded_gifts == 2 and not gift_to_record)
 city_owners.faraway = "sisters"
 card = offer()
 assert(accept(card) and moves == 3)
 scheduled()
 assert(notes[#notes]:find("не подтвердила", 1, true) and city_owners.faraway == "sisters")
+assert(#recorded_gifts == 2 and not gift_to_record and track_calls == 3)
 assert(stock_cases > 0)
 
 local influence_text = "[конфедерация: Сёстры Сумерек -> Хаг Греф] Поддерживаю это соглашение."

@@ -14,6 +14,8 @@ const mainPath = 'script\\talkhammer\\main.lua';
 const layoutPath = 'ui\\talkhammer\\th_panel.twui.xml';
 const pickerPath = 'script\\talkhammer\\lib\\gift_panel.lua';
 const jsonPath = 'script\\talkhammer\\lib\\json.lua';
+const chroniclePath = 'script\\talkhammer\\lib\\chronicle.lua';
+const russianPath = 'script\\talkhammer\\lib\\lang_ru.lua';
 const source = readEntry(base, rulerPath).toString('utf8');
 const module = (await readFile(new URL('./settlement-gifts.lua', import.meta.url), 'utf8')).trimEnd();
 const influence = (await readFile(new URL('./vassal-influence.lua', import.meta.url), 'utf8')).trimEnd();
@@ -26,6 +28,7 @@ const services = await Promise.all([
   'local ' + name + ' = (function()\n' + (await readFile(new URL('./' + file, import.meta.url), 'utf8')).trimEnd() + '\nend)()'));
 const protectedOutput = (await readFile(new URL('./protected-output.lua', import.meta.url), 'utf8')).trimEnd();
 const picker = await readFile(new URL('./gift-panel.lua', import.meta.url));
+const giftChronicle = (await readFile(new URL('./gift-chronicle.lua', import.meta.url), 'utf8')).trimEnd();
 
 function activate(text, pattern, replacement) {
   const matches = text.matchAll(new RegExp(pattern.source, pattern.flags.replace('g', '') + 'g'));
@@ -43,7 +46,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.12")`);
+log("DIPLOMACY|Expansion test.13")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -71,6 +74,14 @@ main = activate(main, /^on_speak = function\(\)$/m,
   '$&\nif gift_picker and gift_picker.consume_speak() then\n'
   + '    if ruler.mask_trace_input then ruler.mask_trace_input("gift_search") end\n'
   + '    return\nend');
+main = activate(main, /^events\.init\(\{$/m, `if chronicle and chronicle.is_settlement_gift_event then
+    local handle_event = events.handle
+    events.handle = function(name, context)
+        if name == "RegionFactionChangeEvent" and chronicle.is_settlement_gift_event(context) then return end
+        return handle_event(name, context)
+    end
+end
+events.init({`);
 
 let ruler = source;
 const askStart = ruler.indexOf('local function ask(');
@@ -191,7 +202,7 @@ local init = ruler.init
 ruler.init = function(deps)
     init(deps)
     diplomacy_expansion = expansion.install({
-        cm = cm, core = core, ruler = ruler, state = state, world = world, actions = actions,
+        cm = cm, core = core, ruler = ruler, state = state, world = world, actions = actions, chronicle = chronicle,
         influence = influence, natural = natural, negotiation = negotiation, council = council, military = military,
         ask_envoy = ask_envoy,
         is_open = function()
@@ -220,6 +231,58 @@ return ruler
 
 const layout = addGiftPanel(readEntry(mainBase, layoutPath).toString('utf8'));
 verifyMaskLayout(layout);
+let chronicle = readEntry(stock, chroniclePath).toString('utf8');
+chronicle = activate(chronicle, /^chronicle\.pretty_region = function\(key\) return pretty_region\(key\) end$/m, `$&
+
+local gift_chronicle = (function()
+${giftChronicle}
+end)()
+local function gift_place(key)
+    local loc_key = "regions_onscreen_" .. key
+    local name = common and common.get_localised_string(loc_key)
+    if type(name) == "string" and name ~= "" and name ~= loc_key then return name end
+    return pretty_region(key)
+end`);
+chronicle = activate(chronicle, /^local UNCAPPED = \{ death = true,/m,
+  'local UNCAPPED = { settlement_gift = true, death = true,');
+chronicle = activate(chronicle, /^if e\.k == "region" then\r?\nif b ~= "" and r then[^\n]*\nif r then[^\n]*\nreturn TS\("chron\.region_any"[^\n]*$/m,
+  `if e.k == "settlement_gift" then
+    x.r = gift_place(e.r)
+    return TS("chron.settlement_gift", "{a} voluntarily gave the settlement of {r} to {b} as a diplomatic gift", x)
+elseif e.k == "region" then
+    if b ~= "" and r then return TS("chron.region_from", "Ownership of {r} passed from {b} to {a}", x) end
+    if r then return TS("chron.region", "{a} became the owner of {r}", x) end
+    return TS("chron.region_any", "{a} became the owner of a province", x)`);
+chronicle = activate(chronicle, /^if lost > 0 and gained == 0 then[\s\S]*?\.\. window \.\. " - the war is even"\r?\nend$/m,
+  `if gained == 0 then return "has lost " .. provinces(lost) .. " in the last " .. window end
+if lost == 0 then return "has gained " .. provinces(gained) .. " in the last " .. window end
+return "has gained " .. provinces(gained) .. " and lost " .. provinces(lost) .. " in the last " .. window
+end`);
+chronicle = activate(chronicle, /^reputation = deps\.reputation$/m, `$&
+gift_chronicle.install(chronicle, state, world, cm, gift_place)
+function chronicle.is_settlement_gift_event(context)
+    local region, owner
+    pcall(function()
+        region = context:region():name()
+        owner = context:region():owning_faction():name()
+    end)
+    if not region or not owner then return false end
+    return chronicle.is_settlement_gift_change(region, faction_key_of(context, "previous_faction"), owner)
+end`);
+chronicle = activate(chronicle, /^if new_owner then\r?\nchronicle\.add\("region", new_owner, previous, region_key\)$/m,
+  'if new_owner and not chronicle.is_settlement_gift_change(region_key, previous, new_owner) then\n'
+  + 'chronicle.add("region", new_owner, previous, region_key)');
+let russian = readEntry(stock, russianPath).toString('utf8');
+for (const [key, translated] of [
+  ['region', 'Фракция {a} стала владельцем поселения {r}'],
+  ['region_any', 'Фракция {a} получила новое поселение'],
+  ['region_from', 'Поселение {r} перешло от фракции {b} к фракции {a}'],
+]) {
+  russian = activate(russian, new RegExp('^\\["chron\\.' + key + '"\\] = .*,$', 'm'),
+    `["chron.${key}"] = "${translated}",`);
+}
+russian = activate(russian, /^\["chron\.region_from"\] = .*,$/m,
+  '$&\n["chron.settlement_gift"] = "Фракция {a} добровольно передала поселение {r} в дар фракции {b}",');
 let json = readEntry(stock, jsonPath).toString('utf8');
 json = activate(json, /^local SUB = string\.sub$/m, 'local SUB = byte_sub');
 json = activate(json, /^SUB = has_high\(s\) and byte_sub or string\.sub\r?\n/m, '');
@@ -229,6 +292,7 @@ json = activate(json, /elseif c == "-" or \(c >= "0" and c <= "9"\) then return 
 const entries = new Map([
   [mainPath, Buffer.from(main, 'utf8')], [rulerPath, Buffer.from(ruler, 'utf8')],
   [layoutPath, Buffer.from(layout, 'utf8')], [pickerPath, picker], [jsonPath, Buffer.from(json, 'utf8')],
+  [chroniclePath, Buffer.from(chronicle, 'utf8')], [russianPath, Buffer.from(russian, 'utf8')],
 ]);
 const pack = moviePack(entries);
 pack.writeUInt32LE(3, 4); // Selectable Mod pack.

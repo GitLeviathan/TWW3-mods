@@ -51,6 +51,7 @@ end
 function gifts.install(deps)
     local cm, ruler, state, world = deps.cm, deps.ruler, deps.state, deps.world
     local actions, fold = deps.actions, deps.fold
+    local chronicle = deps.chronicle
     local pending, requested, moving = {}, {}, {}
     local next_id = 0
     local stock_table_action, stock_ledger, stock_settle = ruler.table_action, ruler.ledger_text, ruler.settle
@@ -622,12 +623,15 @@ function gifts.install(deps)
         end
         pending[key] = nil
         moving[gift.id] = gift
+        local gift_history = gift.kind == gift_kind and chronicle and chronicle.begin_settlement_gift and chronicle
+        if gift_history then gift_history.begin_settlement_gift(gift) end
         ok, why = pcall(function()
             if gift.kind == influence_kind then return influence.apply(gift) end
             return cm:transfer_region_to_faction(gift.region, gift.to)
         end)
         if not ok or why == false then
             moving[gift.id] = nil
+            if gift_history then gift_history.finish_settlement_gift(gift, false) end
             if gift.kind == influence_kind then influence.cleanup(gift) end
             return false, tr("The game rejected the action.", "Игра отклонила действие.")
         end
@@ -635,6 +639,7 @@ function gifts.install(deps)
             or tr("Settlement transferred · ", "Поселение передано · ")) .. details(gift)
         if completed(gift) then
             moving[gift.id] = nil
+            if gift_history then gift_history.finish_settlement_gift(gift, true) end
             note(key, success)
             return true, success
         end
@@ -642,7 +647,9 @@ function gifts.install(deps)
             moving[gift.id] = nil
             if gift.kind == influence_kind then influence.cleanup(gift) end
             if gift.campaign ~= state.data then return end
-            note(key, completed(gift) and success
+            local transferred = completed(gift)
+            if gift_history then gift_history.finish_settlement_gift(gift, transferred) end
+            note(key, transferred and success
                 or tr("The game did not confirm the result.", "Игра не подтвердила результат."))
             show(key)
         end, 1)
