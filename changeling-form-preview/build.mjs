@@ -62,6 +62,7 @@ let label = clone(native, 'button_txt', '3AD45381-AABA-4F98-9C5D2BE8CC5A3204', '
 
 let renderer = clone(equipment, '_3d_character_window', '7B70D1A3-A1FB-4B07-B7F0D1F34C48652D', 'mask_model_renderer', ids.renderer)
   .replace('id="3D_character_window"','id="mask_model_renderer"')
+  .replace('name="NewState"','name="mask_model_view"')
   .replace('offset="-478.00,0.00"','offset="0.00,0.00"')
   .replace('priority="45"','priority="80" updatewhennotvisible="true"')
   .replace('width="1960"','width="470"').replace('height="690"','height="510"')

@@ -46,16 +46,13 @@ local function update()
         local address = holder:CreateComponent('mask_current_model', layout)
         assert(address, 'CreateComponent returned no address')
         local scene = UIComponent(address)
-        local viewport = find_uicomponent(scene, 'mask_model_renderer')
-        describe('holder',holder)
-        describe('scene-before',scene)
-        assert(viewport, 'Created layout has no mask_model_renderer child')
-        describe('viewport-before',viewport)
-        -- MoveTo uses screen coordinates. A dynamically-created root is not
-        -- guaranteed to start at its parent's current position.
-        scene:MoveTo(holder:Position())
-        describe('scene-after',scene)
-        describe('viewport-after',viewport)
+        -- CreateComponent can return the first component under the layout's root,
+        -- renamed to the ID supplied by Lua. Its state identifies the viewport.
+        local direct = scene:CurrentState() == 'mask_model_view'
+        local viewport = direct and scene or find_uicomponent(scene, 'mask_model_renderer')
+        assert(viewport and viewport:CurrentState() == 'mask_model_view', 'Created layout has no model viewport')
+        if not direct then scene:MoveTo(holder:Position()) end
+        describe(direct and 'viewport-direct' or 'viewport-child', viewport)
         return address
     end)
     if notice then
@@ -66,7 +63,7 @@ local function update()
     if not ok then log('create-error|' .. tostring(created)) end
 end
 cm:add_first_tick_callback(function()
-    log('direct battle asset loader v4 bounds diagnostics')
+    log('direct battle asset loader v5 viewport selection')
     cm:repeat_real_callback(function()
         local ok, err = pcall(update)
         if not ok then

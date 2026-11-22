@@ -74,7 +74,8 @@ for unit, model in manifest.items():
     comp = scene.find('components/mask_model_renderer')
     assert comp.find('.//ComponentModel').get('filepath') == model['asset'], unit
     assert comp.find('.//ComponentModel').get('skeleton_type') == model['skeleton'], unit
-    assert comp.find('states/newstate').get('interactive') == 'true'
+    state = comp.find('states/newstate')
+    assert state.get('interactive') == 'true' and state.get('name') == 'mask_model_view'
     assert comp.find('.//callback_with_context').get('callback_id') == 'ComponentModelController'
     assert not any(c.get('callback_id')=='ClanLeaderModelView' for c in comp.iter('callback_with_context'))
 sample = [manifest[k]['asset'] for k in ['wh2_main_hef_cha_tyrion_0','wh_dlc05_wef_cha_orion_0','wh2_main_lzd_cha_lord_mazdamundi_0']]
