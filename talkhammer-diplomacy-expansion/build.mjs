@@ -43,7 +43,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.10")`);
+log("DIPLOMACY|Expansion test.11")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {

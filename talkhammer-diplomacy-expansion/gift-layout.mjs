@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { actionRow, placeActionButton, styleConversationActions } from '../changeling-diplomacy/mask-layout.mjs';
 
 export function addGiftPanel(layout) {
+  layout = styleConversationActions(layout);
   const definitions = [];
   function clone(sourceId, id, x, y, width, height, interactive) {
     const source = layout.match(new RegExp('<' + sourceId + '\\r?\\n[\\s\\S]*?</' + sourceId + '>'));
@@ -14,8 +16,9 @@ export function addGiftPanel(layout) {
           guid.set(old, `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16)}`);
         }
         return guid.get(old);
-      })
-      .replace(/offset="[^"]+"/, `offset="${x}.00,${y}.00"`)
+      });
+    definition = sourceId === 'th_accept' ? placeActionButton(definition, x, y, width, height)
+      : definition.replace(/offset="[^"]+"/, `offset="${x}.00,${y}.00"`)
       .replace(/(?<![\w_])width="\d+"/g, `width="${width}"`)
       .replace(/(?<![\w_])height="\d+"/g, `height="${height}"`);
     if (interactive !== undefined) {
@@ -31,20 +34,22 @@ export function addGiftPanel(layout) {
     definitions.push(definition);
     return { id, guid: firstGuid };
   }
-  const open = clone('th_accept', 'th_gift_open', 890, 426, 190, 24);
-  const picker = clone('th_frame', 'th_gift_picker', 20, 70, 1060, 300, true);
+  const hasMask = layout.includes('id="th_mask_toggle"');
+  const open = clone('th_accept', 'th_gift_open', hasMask ? 504 : 710, actionRow.y, hasMask ? 198 : 200, actionRow.height);
+  const picker = clone('th_frame', 'th_gift_picker', 20, 66, 1060, 314, true);
   const children = [
-    clone('th_title', 'th_gift_header', 16, 6, 1028, 40),
+    clone('th_title', 'th_gift_header', 16, 4, 1028, 40),
   ];
   for (let index = 0; index < 8; index++) {
     children.push(clone('th_accept', `th_gift_choice_${index + 1}`,
-      16 + index % 2 * 520, 58 + Math.floor(index / 2) * 45, 508, 40));
+      16 + index % 2 * 520, 46 + Math.floor(index / 2) * 54, 508, 48));
   }
   children.push(
-    clone('th_accept', 'th_gift_back', 16, 255, 154, 34),
-    clone('th_accept', 'th_gift_previous', 369, 255, 147, 34),
-    clone('th_accept', 'th_gift_next', 530, 255, 147, 34),
-    clone('th_accept', 'th_gift_send', 840, 255, 204, 34),
+    clone('th_accept', 'th_gift_previous', 218, 262, 200, 48),
+    clone('th_accept', 'th_gift_back', 430, 262, 200, 48),
+    // Only the confirmation screen shows Send in place of Next.
+    clone('th_accept', 'th_gift_next', 642, 262, 200, 48),
+    clone('th_accept', 'th_gift_send', 642, 262, 200, 48),
   );
   const link = ({id, guid}) => `<${id} this="${guid}"/>`;
   const additions = `    ${link(open)}
