@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { styleMaskLayout } from './mask-layout.mjs';
 
 const installedVersion = JSON.parse(await readFile(new URL('./installed-version-adjustments.json', import.meta.url), 'utf8'));
 
@@ -74,7 +75,8 @@ if (process.argv[2] === '--installed') {
   assert.equal(baseline.size, 6, 'Expected a standalone TalkHammer mask mod');
   assert(baseline.get(mainPath).content.includes(Buffer.from('mask.install')), 'Missing installed mask hook');
   const entries = await Promise.all([...baseline].map(async ([name, entry]) => [
-    name, replacements.has(name) ? await readFile(new URL(replacements.get(name), import.meta.url)) : entry.content,
+    name, replacements.has(name) ? await readFile(new URL(replacements.get(name), import.meta.url))
+      : name === layoutPath ? Buffer.from(styleMaskLayout(entry.content.toString('utf8'))) : entry.content,
   ]));
   await writePack(entries);
   process.exit(0);
@@ -107,18 +109,6 @@ function addPanelButtons(layout) {
       .replace('offset="368.00,454.00"', `offset="${x}.00,454.00"`)
       .replaceAll('width="560"', `width="${width}"`));
   }
-  const titleLink = layout.match(/<th_title this="[^"]+"\s*\/>/g);
-  const title = layout.match(/<th_title\r?\n[^>]*>[\s\S]*?<\/th_title>/g);
-  if (titleLink?.length !== 1 || title?.length !== 1 || !title[0].includes('offset="128.00,8.00"')
-      || !title[0].includes('width="466"') || !title[0].includes('height="30"')) {
-    throw new Error('The installed TalkHammer no longer matches the panel title layout');
-  }
-  links.push(clone(titleLink[0], 'th_title', 'th_mask_speaker'));
-  components.push(clone(title[0], 'th_title', 'th_mask_speaker')
-    .replace('offset="128.00,8.00"', 'offset="20.00,426.00"')
-    .replace('width="466"', 'width="1060"')
-    .replace('height="30"', 'height="26"')
-    .replace('textyoffset="6.00,6.00"', 'textyoffset="3.00,3.00"'));
   return layout.replace(hierarchy[0], [hierarchy[0], ...links].join('\r\n\t\t\t\t'))
     .replace(definitions[0], [definitions[0], ...components].join('\r\n\t\t'));
 }
@@ -166,7 +156,7 @@ const entries = [
   [modulePath, await readFile(new URL('./mask.lua', import.meta.url))],
   [exposurePath, await readFile(new URL('./mask_exposure.lua', import.meta.url))],
   [panelPath, await readFile(new URL('./mask_panel.lua', import.meta.url))],
-  [layoutPath, Buffer.from(addPanelButtons(layoutEntry.content.toString('utf8')), 'utf8')],
+  [layoutPath, Buffer.from(styleMaskLayout(addPanelButtons(layoutEntry.content.toString('utf8'))), 'utf8')],
   [mainPath, Buffer.from(main.replace(hook, patch + hook).replace(speakHook,
     'if ruler.mask_speak_ready and not ruler.mask_speak_ready() then return end\r\n' + speakHook), 'utf8')],
   [worldPath, Buffer.from(world.replace(leaderCache, '$1$2$3$1f.leader_subtype = subtype$3')

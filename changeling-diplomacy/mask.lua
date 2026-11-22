@@ -606,7 +606,7 @@ function mask.install(deps)
     end
 
     local function court_summary(form, target, pair, turn, blocked)
-        local lines = { "ЭТОТ РАЗГОВОР" }
+        local lines = {}
         if blocked then lines[#lines + 1] = "Облик раскрыт. Сделки доступны с хода " .. blocked .. "." end
         local warning = exposure.known_warning(pair, turn)
         if warning then lines[#lines + 1] = "Двор сослался на предупреждение от " .. label(warning) .. "." end
@@ -1192,6 +1192,7 @@ function mask.install(deps)
                 end
             end
             panel_state, draw_request = nil, nil
+            panel.release_speak()
             local result = original_show(target, fallback)
             panel.controls(cm:get_local_faction_name(true) == changeling, enabled, false)
             return result
@@ -1216,6 +1217,7 @@ function mask.install(deps)
         if original_news then
             ruler.show_news = function(...)
                 draw_request = nil
+                panel.release_speak()
                 local result = original_news(...)
                 panel.controls(false)
                 return result
@@ -1250,7 +1252,6 @@ function mask.install(deps)
                 local assessment = exposure.assess(pair, pending.session, pending.plan, allied)
                 warning = assessment.warning and pair.warning
                 detail = describe_clues(assessment)
-                table.insert(detail, 1, "ПРОВЕРКА ДВОРА")
                 if pending.session.envoy then detail[#detail + 1] = describe_envoy(pending.session.envoy) end
             elseif pair then
                 detail = court_summary(form, target, pair, turn, blocked)
@@ -1260,6 +1261,7 @@ function mask.install(deps)
                 epoch = context_epoch, pending = pending }
             local history_shown, detail_shown = panel.render({
                 target = target, identity = identity, attitude = attitude, history = history, detail = detail or {},
+                faction = form and label(form.faction), envoy_turn = checking and pending.session.envoy and pending.session.envoy.returns,
                 fallback = reason or request.fallback, waiting = waiting, pending = pending, blocked = blocked,
                 speech = waiting and active.text or (pending and pending.session.text),
                 notice = notice and notice.lines or {}, deal = deal,

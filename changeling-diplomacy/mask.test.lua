@@ -10,15 +10,18 @@ local faction_reads = {}
 local native_draws, native_accepts, input_text = 0, 0, ""
 local panel_visible = false
 local ledger_ok = true
-local ui_sub, ui_ledger, ui_deal, ui_accept, ui_portrait, ui_attitude, ui_lines
+local ui_sub, ui_ledger, ui_deal, ui_accept, ui_portrait, ui_lines
 local buttons = {}
-for _, id in ipairs({ "th_mask_speaker", "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist" }) do
+for _, id in ipairs({ "th_mask_regard", "th_mask_status", "th_mask_deal_heading", "th_mask_ledger_heading",
+    "th_mask_toggle", "th_mask_explain", "th_mask_withdraw", "th_mask_insist", "speak" }) do
     buttons[id] = {
         SetVisible = function(self, value) self.visible = value end,
         SetStateText = function(self, value) self.text = value end,
+        Visible = function(self) return self.visible end,
     }
 end
 local ui = {
+    speak_btn = buttons.speak,
     init = function() return true end,
     deep_find = function(_, id) return buttons[id] end,
     set_sub = function(text) ui_sub = text end,
@@ -26,11 +29,11 @@ local ui = {
     set_deal = function(text) ui_deal = text end,
     set_accept = function(text) ui_accept = text end,
     set_image = function(kind, path) if kind == "portrait" then ui_portrait = path end end,
-    set_badge = function(kind, text) if kind == "att" then ui_attitude = text end end,
     show_history = function(_, lines) ui_lines = table.concat(lines, "\n"); panel_visible = true; return true end,
     compose_take = function() local text = input_text; input_text = ""; return text end,
 }
 local factions = { [player] = true, reikland = true, gelt = true, kislev = true }
+buttons.speak.visible = true
 local ruler = {
     COMMANDS = {}, awaiting = {},
     talk_to = function() ordinary = ordinary + 1 end,
@@ -734,9 +737,10 @@ ruler.show_conversation("gelt")
 ruler.tick()
 assert(native_draws == 0 and ui_portrait == "gelt-portrait" and ui_sub:find(owner, 1, true),
     "Opening a masked audience used the ordinary conversation view")
-assert(ui_attitude:find("-20", 1, true), "The portrait header omitted the attitude toward the masked faction")
-assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: " .. owner,
-    "The composer did not name the active speaker")
+assert(buttons.th_mask_regard.visible and buttons.th_mask_regard.text:find(owner, 1, true)
+    and buttons.th_mask_regard.text:find("-20", 1, true), "The header must tie the attitude to the masked faction")
+assert(ui_sub:find("От имени:", 1, true) and buttons.th_mask_deal_heading.visible,
+    "The active speaker and deal heading belong to the masked view")
 ruler.show_conversation("bystander")
 assert(native_draws == 0 and not ui_accept, "An old ordinary reply replaced the active masked court")
 ruler.press_accept()
@@ -755,28 +759,31 @@ assert(ui_lines:find("Legacy conversation", 1, true), "The panel dropped the old
 change_form("ksl_katarin", "kislev")
 ruler.tick()
 assert(not ui_lines:find("Masked greeting.", 1, true), "Switching masks exposed another mask's conversation")
-assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: kislev",
-    "The composer kept the previous speaker after changing masks")
+assert(ui_sub == "От имени: kislev", "The header kept the previous speaker after changing masks")
 
 local function click(button)
     dispatch("ComponentLClickUp", "th_mask_" .. button)
     ruler.tick()
 end
-assert(buttons.th_mask_toggle.visible and buttons.th_mask_toggle.text:find("вкл", 1, true))
+assert(buttons.th_mask_toggle.visible and buttons.th_mask_toggle.text == "Снять маску")
 click("toggle")
 assert(native_draws == 1 and ui_accept == "ACCEPT" and buttons.th_mask_toggle.visible
-    and buttons.th_mask_toggle.text:find("выкл", 1, true), "The toggle did not restore ordinary conversation")
-assert(not buttons.th_mask_speaker.visible, "Ordinary diplomacy kept the mask speaker visible")
+    and buttons.th_mask_toggle.text == "Надеть маску", "The toggle did not restore ordinary conversation")
+assert(not buttons.th_mask_deal_heading.visible and not buttons.th_mask_regard.visible,
+    "Ordinary diplomacy kept the mask layout visible")
+assert(buttons.speak.visible, "Ordinary diplomacy must retain its send action")
 ruler.press_accept()
 assert(native_accepts == 1)
 click("toggle")
-assert(native_draws == 1 and not ui_accept and buttons.th_mask_toggle.text:find("вкл", 1, true))
-assert(buttons.th_mask_speaker.visible and buttons.th_mask_speaker.text == "Говоришь от имени: kislev")
+assert(native_draws == 1 and not ui_accept and buttons.th_mask_toggle.text == "Снять маску")
+assert(ui_sub == "От имени: kislev")
 
 prepare_peace_reversal("gelt")
 ruler.tick()
 assert(buttons.th_mask_explain.visible and buttons.th_mask_withdraw.visible and buttons.th_mask_insist.visible)
 assert(ui_deal:find("Объявляет войну — " .. owner, 1, true), "The panel did not show what the player was asked to confirm")
+assert(not ui_lines:find("Объявляет войну — ", 1, true) and not buttons.speak.visible,
+    "The check must leave the terms in the right column and use the explanation action")
 assert(ui_lines:find("I have questions about this.", 1, true) and not ui_ledger:find("I have questions about this.", 1, true),
     "The court's spoken reaction replaced part of the clues block")
 click("explain")
@@ -845,7 +852,7 @@ assert(panel_visible and ui_lines:find("Облик", 1, true), "The explicit /ma
 panel_visible = false
 mask_command("off")
 ruler.tick()
-assert(panel_visible and buttons.th_mask_toggle.text:find("выкл", 1, true),
+assert(panel_visible and buttons.th_mask_toggle.text == "Надеть маску",
     "Explicit /mask off did not restore the ordinary panel and toggle")
 
 state.data, at_war, turn = {}, false, 85
@@ -1171,7 +1178,9 @@ do
     assert_pair("military_access", "gelt", owner)
 
     open_envoy_check()
-    click("insist")
+    assert(not buttons.th_mask_insist.visible and not buttons.speak.visible
+        and buttons.th_mask_status.text:find("164", 1, true), "The envoy state must show its deadline instead of the insist button")
+    mask_command("insist")
     assert(not applied and pacts[deal_key], "Insisting applied the deal before the envoy returned")
     ruler.select("bystander")
     turn = 164
