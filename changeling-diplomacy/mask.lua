@@ -153,6 +153,29 @@ function mask.install(deps)
     local equipped_subtype, refresh_error
     local diplomacy_open, refresh_waiting, refresh_scheduled = false, false, false
 
+    local native_header = ruler.header_facts
+    if native_header then
+        ruler.header_facts = function(key)
+            if not diplomacy_open then return native_header(key) end
+            -- Cross-faction CCO reads here can invalidate the active campaign UI root.
+            local cached = ruler.header_cache and ruler.header_cache[key] or {}
+            local portrait = cached.portrait
+            if not portrait and key == "wh2_main_hef_avelorn" then
+                local ok, subtype = pcall(function()
+                    return cm:get_faction(key):faction_leader():character_subtype_key()
+                end)
+                if ok and subtype == "wh2_dlc10_hef_alarielle" then
+                    portrait = "ui/portraits/portholes/no_culture/hef_alarielle_campaign_0.png"
+                end
+            end
+            return {
+                crest = cached.crest or ("ui/flags/" .. key .. "/mon_256.png"),
+                portrait = portrait,
+                attitude = cached.attitude,
+            }
+        end
+    end
+
     local function log(message)
         if out then out("TH|MASK|" .. message) end
     end
@@ -1473,7 +1496,10 @@ function mask.install(deps)
             end
             local request = draw_request
             draw_request = nil
-            if request and (request.open or panel.visible()) then draw(request) end
+            if request and (request.open or panel.visible()) then
+                local ok, error = pcall(draw, request)
+                if not ok then log("UI|masked draw failed: " .. tostring(error)) end
+            end
             return result
         end
 

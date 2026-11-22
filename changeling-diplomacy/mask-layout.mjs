@@ -24,6 +24,12 @@ function skin(component, texture, margin) {
   return margin ? withTexture.replace(/margin="[^"]+"/, 'margin="' + margin + '"') : withTexture;
 }
 
+function initiallyHidden(component) {
+  const header = component.slice(0, component.indexOf('>'));
+  if (header.includes('visible="false"')) return component;
+  return component.replace(/(offset="[^"]+")/, '$1 visible="false"');
+}
+
 export function verifyMaskLayout(layout) {
   if (!layout.includes('id="th_mask_toggle"')) return;
   const controls = [
@@ -71,7 +77,7 @@ export function styleMaskLayout(source) {
       return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16);
     };
     const component = definition(layout, template).replaceAll(template, id).replace(guidPattern, uuid);
-    added.push({ id, xml: style(dimensions(component, x, y, w, h)), guid: component.match(/this="([^"]+)"/)[1] });
+    added.push({ id, xml: initiallyHidden(style(dimensions(component, x, y, w, h))), guid: component.match(/this="([^"]+)"/)[1] });
   }
 
   remove('th_mask_speaker');
@@ -81,7 +87,8 @@ export function styleMaskLayout(source) {
   for (const [id, x, w] of [
     ['th_mask_toggle', 20, 196], ['th_mask_withdraw', 270, 234],
     ['th_mask_insist', 513, 166], ['th_mask_explain', 688, 240],
-  ]) edit(id, component => dimensions(component, x, 454, w, 34));
+  ]) edit(id, component => initiallyHidden(dimensions(component, x, 454, w, 34)));
+  for (const id of ['th_crest', 'th_portrait', 'th_accept']) edit(id, initiallyHidden);
 
   // The native parchment trim and button art follow the game's faction skin.
   for (const id of ['th_deal', 'th_ledger']) {

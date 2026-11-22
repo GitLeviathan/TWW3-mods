@@ -56,7 +56,12 @@ ruler.show_conversation = function()
     ui.set_accept("ACCEPT")
 end
 ruler.press_accept = function() native_accepts = native_accepts + 1 end
-ruler.header_facts = function(key) return { portrait = key .. "-portrait", crest = key .. "-crest" } end
+ruler.header_cache = { gelt = {portrait = "gelt-portrait"}, bystander = {portrait = "bystander-portrait"} }
+local live_header_reads = 0
+ruler.header_facts = function(key)
+    live_header_reads = live_header_reads + 1
+    return { portrait = key .. "-portrait", crest = key .. "-crest" }
+end
 ruler.tick = function() end
 local settings = {}
 local actions = { blocked = false, CONCLUDE = {} }
@@ -735,8 +740,23 @@ state.data = {}
 ui.frame = { Visible = function() return panel_visible end }
 ui.panel, ui.label = ui.frame, {}
 ui.init()
+local header_reads_before = live_header_reads
+dispatch("PanelOpenedCampaign", "diplomacy_dropdown")
 ruler.show_conversation("gelt")
 ruler.tick()
+assert(live_header_reads == header_reads_before, "Drawing while diplomacy is open must not call the CCO header reader")
+do
+    local get_faction = cm.get_faction
+    cm.get_faction = function()
+        return { faction_leader = function()
+            return { character_subtype_key = function() return "wh2_dlc10_hef_alarielle" end }
+        end }
+    end
+    local facts = ruler.header_facts("wh2_main_hef_avelorn")
+    cm.get_faction = get_faction
+    assert(facts.portrait:find("hef_alarielle_campaign_0.png", 1, true)
+        and facts.crest == "ui/flags/wh2_main_hef_avelorn/mon_256.png")
+end
 assert(native_draws == 0 and ui_portrait == "gelt-portrait" and ui_sub:find(owner, 1, true),
     "Opening a masked audience used the ordinary conversation view")
 assert(buttons.th_mask_regard.visible and buttons.th_mask_regard.text:find(owner, 1, true)
