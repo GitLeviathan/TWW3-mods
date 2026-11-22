@@ -595,5 +595,5 @@ cm:add_first_tick_callback(function()
             if not busy then refresh() end
         end, 150)
     end, true)
-    log("ready|test.1")
+    log("ready|test.2")
 end)

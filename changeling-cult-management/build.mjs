@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
-import { moviePack, readEntry } from '../mod-tools/pack.mjs';
+import { modPack, readEntry } from '../mod-tools/pack.mjs';
 
 const folder = new URL('./', import.meta.url);
 const output = fileURLToPath(new URL('changeling_cult_management.pack', folder));
@@ -168,7 +168,7 @@ const parts = await Promise.all(['catalog', 'management', 'native'].map(async na
   `local ${name} = (function()\n${await readFile(new URL(`${name}.lua`, folder), 'utf8')}\nend)()\n`));
 parts.push(await readFile(new URL('campaign.lua', folder), 'utf8'));
 assets.set('script\\campaign\\mod\\changeling_cult_management.lua', Buffer.from(parts.join('\n')));
-const pack = moviePack(assets);
+const pack = modPack(assets);
 await writeFile(output, pack);
 for (const [name, content] of assets) {
   if (!readEntry(output, name).equals(content)) throw new Error(`Pack verification failed for ${name}`);

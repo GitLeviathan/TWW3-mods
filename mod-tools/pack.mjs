@@ -11,8 +11,10 @@ export function readEntry(file,wanted){
   p=end+1;o+=n;
  }throw Error('Missing entry: '+wanted);
 }
-export function moviePack(entries){
- const h=Buffer.alloc(28);h.write('PFH5');h.writeUInt32LE(4,4);h.writeUInt32LE(entries.size,16);
+function buildPack(entries,type){
+ const h=Buffer.alloc(28);h.write('PFH5');h.writeUInt32LE(type,4);h.writeUInt32LE(entries.size,16);
  const index=Buffer.concat([...entries].map(([name,data])=>{const m=Buffer.alloc(5);m.writeUInt32LE(data.length);return Buffer.concat([m,Buffer.from(name+'\0')]);}));
  h.writeUInt32LE(index.length,20);return Buffer.concat([h,index,...entries.values()]);
 }
+export function moviePack(entries){return buildPack(entries,4);}
+export function modPack(entries){return buildPack(entries,3);}
