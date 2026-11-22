@@ -231,11 +231,16 @@ function panel.new(deps)
         view.controls(true, data.masked ~= false,
             data.pending and (envoy_turn and "envoy" or checking and "check" or "confirm") or "talk", data.preview)
         use_header(components.regard ~= nil)
+        local attitude = "—"
+        if data.attitude then
+            local points = math.floor(math.abs(data.attitude) + 0.5)
+            attitude = (data.attitude < 0 and points > 0 and "-" or "") .. points
+        end
         if components.regard then
-            set_label("regard", data.faction and ("Отношение к " .. data.faction .. " · " .. tostring(data.attitude or "—")))
+            set_label("regard", data.faction and ("Отношение к " .. data.faction .. " · " .. attitude))
             set_label("status", status)
         elseif ui.set_badge then
-            ui.set_badge("att", "ОТНОШЕНИЕ\n" .. tostring(data.attitude or "—"))
+            ui.set_badge("att", "ОТНОШЕНИЕ\n" .. attitude)
             ui.set_badge("reg", data.blocked and "Облик раскрыт" or "")
             ui.set_badge("mood", status or "")
         end

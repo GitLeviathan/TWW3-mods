@@ -765,6 +765,14 @@ assert(buttons.th_mask_regard.visible and buttons.th_mask_regard.text:find(owner
     and buttons.th_mask_regard.text:find("-20", 1, true), "The header must tie the attitude to the masked faction")
 assert(ui_sub:find("От имени:", 1, true) and buttons.th_mask_deal_heading.visible,
     "The active speaker and deal heading belong to the masked view")
+for _, example in ipairs({ { 181.24761962891, "181" }, { -19.6, "-20" }, { -0.1, "0" }, { nil, "—" } }) do
+    masked_attitude = example[1]
+    ruler.show_conversation("gelt")
+    ruler.tick()
+    assert(buttons.th_mask_regard.text == "Отношение к " .. owner .. " · " .. example[2],
+        "The masked header must show the rounded attitude or a dash")
+end
+masked_attitude = -20
 ruler.show_conversation("bystander")
 assert(native_draws == 0 and not ui_accept, "An old ordinary reply replaced the active masked court")
 ruler.press_accept()
