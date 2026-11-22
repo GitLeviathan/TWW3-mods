@@ -743,7 +743,9 @@ ui.init()
 local header_reads_before = live_header_reads
 dispatch("PanelOpenedCampaign", "diplomacy_dropdown")
 ruler.show_conversation("gelt")
+string.find = function() error("The campaign's native find must stay out of the masked draw") end
 ruler.tick()
+string.find = native_find
 assert(live_header_reads == header_reads_before, "Drawing while diplomacy is open must not call the CCO header reader")
 do
     local get_faction = cm.get_faction

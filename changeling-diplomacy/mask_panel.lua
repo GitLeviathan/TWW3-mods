@@ -210,7 +210,8 @@ function panel.new(deps)
         if not data.preview and ruler.update_news_label then ruler.update_news_label() end
         if ui.set_sub then
             local identity = data.identity
-            if identity and data.faction and not identity:find(data.faction, 1, true) then
+            -- The campaign replaces string.find with a three-argument UTF-8 function.
+            if identity and data.faction and not u8.index_of(identity, data.faction) then
                 identity = identity .. " · " .. data.faction
             end
             ui.set_sub(identity and ("От имени: " .. identity) or "Выбери облик правителя")
