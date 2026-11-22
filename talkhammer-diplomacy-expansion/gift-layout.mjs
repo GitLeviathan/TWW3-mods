@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { actionRow, placeActionButton, styleConversationActions } from '../changeling-diplomacy/mask-layout.mjs';
+import { actionRow, placeActionButton, styleConversationLayout } from '../changeling-diplomacy/mask-layout.mjs';
 
 export function addGiftPanel(layout) {
-  layout = styleConversationActions(layout);
+  layout = styleConversationLayout(layout);
   const definitions = [];
   function clone(sourceId, id, x, y, width, height, interactive) {
     const source = layout.match(new RegExp('<' + sourceId + '\\r?\\n[\\s\\S]*?</' + sourceId + '>'));

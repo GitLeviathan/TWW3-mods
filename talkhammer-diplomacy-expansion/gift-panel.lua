@@ -77,14 +77,15 @@ function panel.install(deps)
         local heading = step == "city" and tr("Choose a settlement", "Выбери поселение")
             or tr("Choose the recipient", "Выбери получателя")
         if review then
-            heading = tr("Propose a gift", "Предложить дар") .. "\n" .. selection.city.label .. " → " .. selection.recipient.label
+            heading = tr("Propose a gift", "Предложить дар") .. "\n" .. selection.city.label
+                .. tr(" · Recipient: ", " · Получатель: ") .. selection.recipient.label
         else
             if pages > 1 then heading = heading .. "  •  " .. selection.page .. "/" .. pages end
             if #choices == 0 then heading = heading .. "\n" .. tr("No matches", "Ничего не найдено") end
         end
         set("header", heading)
-        set("previous", not review and selection.page > 1 and tr("Previous", "Назад ←") or nil)
-        set("next", not review and selection.page < pages and tr("Next", "Далее →") or nil)
+        set("previous", not review and selection.page > 1 and tr("Previous", "Предыдущая") or nil)
+        set("next", not review and selection.page < pages and tr("Next", "Следующая") or nil)
         set("back", step == "city" and tr("Cancel", "Отмена") or tr("Back", "Назад"))
         set("send", review and tr("Propose gift", "Предложить дар") or nil)
         components.picker:SetVisible(true)

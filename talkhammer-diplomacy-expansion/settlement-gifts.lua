@@ -82,10 +82,17 @@ function gifts.install(deps)
         return tr("Settlement gift", "Дар поселения")
     end
 
-    local function details(gift)
+    local function parties(gift, separator)
         local from, to = world.name_of(gift.from), world.name_of(gift.to)
-        if gift.kind == influence_kind then return from .. " → " .. to end
-        return from .. " → " .. place_name(gift.region) .. " → " .. to
+        if gift.kind == influence_kind then
+            return tr("Joins: ", "Вступает: ") .. from .. separator .. tr("Remains: ", "Остаётся: ") .. to
+        end
+        return tr("Donor: ", "Даритель: ") .. from .. separator .. tr("Recipient: ", "Получатель: ") .. to
+    end
+
+    local function details(gift)
+        local sides = parties(gift, " · ")
+        return gift.region and (place_name(gift.region) .. " · " .. sides) or sides
     end
 
     local function note(key, text)
@@ -570,18 +577,18 @@ function gifts.install(deps)
 
     ruler.ledger_text = function(key, label, split)
         local text, card = stock_ledger(key, label, split)
+        if type(text) == "string" then text = text:gsub(" → ", " / ") end
         local gift = on_table(key)
         local exchange = negotiation and negotiation.card(key)
         if exchange then
-            local description = tr("Settlement exchange", "Обмен поселениями") .. "\n" .. exchange.what
+            local description = tr("Settlement exchange", "Обмен поселениями") .. "\n" .. exchange.what:gsub(" → ", " / ")
                 .. "\n" .. tr("Confirm or /reject.", "Подтверди или введи /reject.")
             if split then return text, description end
             return description .. "\n\n" .. (text or ""), description
         end
         if not gift then return text, card end
-        local parties = world.name_of(gift.from) .. " → " .. world.name_of(gift.to)
-        local body = gift.region and parties .. "\n" .. place_name(gift.region)
-            or parties .. "\n" .. tr("Faction that remains: ", "После объединения останется ") .. world.name_of(gift.to)
+        local body = parties(gift, "\n")
+        if gift.region then body = tr("Settlement: ", "Поселение: ") .. place_name(gift.region) .. "\n" .. body end
         local description = title(gift) .. "\n" .. body .. "\n" .. tr("Confirm or /reject.", "Подтверди или введи /reject.")
         if split then return text, description end
         return description .. "\n\n" .. (text or ""), description

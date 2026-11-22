@@ -70,7 +70,7 @@ end
 local ruler = {
     counterpart = "sisters",
     table_action = function() return nil end,
-    ledger_text = function() return "vanilla", "vanilla card" end,
+    ledger_text = function() return "Старый дар · Сёстры Сумерек → Дальняя гавань → Ледяной двор", "vanilla card" end,
     settle = function() stock_accepts = stock_accepts + 1; return true, "stock" end,
     show_conversation = function() stock_cases = stock_cases + 1 end,
     publish_status = function() end,
@@ -185,9 +185,10 @@ assert(not human_gift and human_reason)
 human.sisters = false
 
 local card = offer()
-local _, ledger = ruler.ledger_text("sisters", nil, true)
-assert(ledger:find("Сёстры Сумерек", 1, true) and ledger:find("Дальняя гавань", 1, true)
-       and ledger:find("Ледяной двор", 1, true))
+local log, ledger = ruler.ledger_text("sisters", nil, true)
+assert(ledger:find("Поселение: Дальняя гавань\nДаритель: Сёстры Сумерек\nПолучатель: Ледяной двор", 1, true))
+assert(not log:find("→", 1, true) and log:find("Дальняя гавань", 1, true), "Old notes must remain readable")
+assert(not notes[#notes]:find("→", 1, true), "New gift notes must not use the overlapping glyph")
 assert(not ruler.settle("sisters", true, {turn = current_turn}))
 assert(moves == 0)
 assert(not accept({print = "settlement_gift|different"}))
