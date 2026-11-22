@@ -29,9 +29,11 @@ local ruler = { counterpart = "sisters", tick = function() end,
     offer_settlement_gift = function(key, region, recipient) submitted = {key, region, recipient} end,
 }
 local masked = false
+local native_find = string.find
 ruler.expansion_mask_active = function() return masked end
 local picker = panel.install({ ui = ui, ruler = ruler, cm = { turn_number = function() return turn end },
     state = { data = {} }, language = function() return "ru" end, fold = string.lower,
+    index_of = function(text, query) return native_find(text, query, 1, true) end,
     core = { add_listener = function(_, _, _, predicate, callback)
         listener = function(id)
             local context = { string = id }
@@ -59,7 +61,9 @@ click("open")
 click("choice_1")
 assert(part("choice_1").text == "Ледяной двор")
 ui.field.text = "двор"
+string.find = function() error("The campaign's native find must stay out of settlement filtering") end
 ruler.tick()
+string.find = native_find
 assert(part("choice_1").text == "Ледяной двор" and not part("choice_2").visible)
 click("choice_1")
 assert(part("send").visible and not submitted)

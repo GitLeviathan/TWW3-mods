@@ -43,7 +43,7 @@ end)()(getfenv(1), function(why, message)
     file:close()
 end)
 local function log(msg) safe_out(TAG .. tostring(msg)) end
-log("DIPLOMACY|Expansion test.9")`);
+log("DIPLOMACY|Expansion test.10")`);
 main = activate(main, /^local env_ok, env_why = pcall\(setfenv, chunk, getfenv\(1\)\)$/m,
   'local env_ok, env_why = pcall(setfenv, chunk, talkhammer_environment)');
 if (main.includes('mask.install')) {
@@ -61,7 +61,7 @@ if ui then
     local module = load_module("talkhammer/lib/gift_panel.lua")
     if module then
         local ok, result = pcall(module.install, { ui = ui, ruler = ruler, core = core,
-            cm = cm, state = state, fold = u8.fold, log = log,
+            cm = cm, state = state, fold = u8.fold, index_of = u8.index_of, log = log,
             language = function() return lang and lang.code end })
         if ok then gift_picker = result else log("EXPANSION|picker failed: " .. tostring(result)) end
     end

@@ -15,7 +15,7 @@ local alternatives = { ["если"] = true, ["или"] = true, ["либо"] = tr
     ["unless"] = true, ["after"] = true, ["when"] = true, ["for"] = true }
 
 function natural.command(text, words)
-    if text:find("[?;\r\n]") or text:find("？", 1, true) then return end
+    if text:match("[?;\r\n]") or text:match("？") then return end
     local tokens = words(text)
     local first = (tokens[1] == "пожалуйста" or tokens[1] == "please") and 2 or 1
     if not verbs[tokens[first]] then return end

@@ -37,9 +37,9 @@ local function arguments(line)
     if verb == "помогите" or verb == "помоги" or verb == "help" then
         local words = " " .. rest .. " "
         for _, attack in ipairs(help_verbs) do
-            local first, last = words:find(" " .. attack .. " ", 1, true)
-            if first then
-                return trim(words:sub(last + 1)), trim(words:sub(1, first - 1))
+            local beneficiary, region = words:match("^(.-) " .. attack .. " (.*)$")
+            if beneficiary then
+                return trim(region), trim(beneficiary)
             end
         end
     end
@@ -47,10 +47,10 @@ end
 
 local function parse(text, fold, turn)
     local line = trim(fold(text)):gsub("[!.]+$", "")
-    if line:find("?", 1, true) then return end
+    if line:match("%?") then return end
     local words = " " .. line:gsub("[,;]", " ") .. " "
     for _, condition in ipairs({ " если ", " когда ", " при условии ", " if ", " unless ", " when " }) do
-        if words:find(condition, 1, true) then return end
+        if words:match(condition) then return end
     end
     local region, beneficiary = arguments(line)
     if not region then

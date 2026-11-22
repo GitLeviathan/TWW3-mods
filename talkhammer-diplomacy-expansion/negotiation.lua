@@ -18,7 +18,7 @@ function negotiation.install(deps, api)
     local open, sequence = {}, 0
 
     local function order(key, text, player)
-        if text:find("[?;\r\n]") then return end
+        if text:match("[?;\r\n]") then return end
         text = trim(text):gsub("[.!]+$", "")
         local address, message = text:match("^([^,]+),%s+(.+)$")
         local addressed_verb = message and message:match("^(%S+)%s")

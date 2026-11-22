@@ -63,7 +63,7 @@ function panel.install(deps)
         local choices = {}
         local query = review and "" or deps.fold(selection.filter)
         for _, choice in ipairs(selection.choices) do
-            if query == "" or deps.fold(choice.label):find(query, 1, true) then choices[#choices + 1] = choice end
+            if query == "" or deps.index_of(deps.fold(choice.label), query) then choices[#choices + 1] = choice end
         end
         local pages = math.max(1, math.ceil(#choices / page_size))
         selection.page = math.min(pages, math.max(selection.page, 1))

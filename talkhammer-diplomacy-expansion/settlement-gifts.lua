@@ -32,7 +32,7 @@ local function fields(text, fold)
     for word in fold(prefix):gmatch("%S+") do
         if gift_words[word:gsub("[,%.!?]+$", "")] then return trim(first), trim(second), true end
     end
-    if (" " .. fold(middle) .. " "):find(" в дар ", 1, true) then
+    if (" " .. fold(middle) .. " "):match(" в дар ") then
         return trim(first), trim(second), true
     end
     return nil, nil, false
